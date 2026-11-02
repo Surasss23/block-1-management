@@ -218,8 +218,8 @@ function App() {
     try {
       const fee = Number(monthlyFee);
       if (!Number.isFinite(fee) || fee <= 0) throw new Error('Enter a valid monthly maintenance amount.');
-      for (const [key, value] of [['monthly_maintenance', fee], ['upi_id', upiId.replace(/[\s,;]+/g, '').trim()]]) {
-        const { error } = await supabase.from('settings').upsert({ key, value: JSON.stringify(value) });
+      for (const [key, value] of [['monthly_maintenance', fee], ['upi_id', upiId.replace(/[\s,;]+/g, '').replace(/^['\"]+|['\"]+$/g, '').trim()]]) {
+        const { error } = await supabase.from('settings').upsert({ key, value });
         if (error) throw error;
       }
       setNotice('Settings saved. New dues will use the updated maintenance amount.'); await load();
@@ -294,7 +294,7 @@ function App() {
 
       const settingsMap = Object.fromEntries((s.data || []).map(x => [x.key, x.value]));
       setMonthlyFee(String(settingsMap.monthly_maintenance ?? 500));
-      setUpiId(String(settingsMap.upi_id ?? ''));
+      setUpiId(String(settingsMap.upi_id ?? '').replace(/^['\"]+|['\"]+$/g, '').replace(/[\s,;]+/g, '').trim());
       setData({
         dues: d.data || [],
         payments: pa.data || [],
@@ -395,7 +395,7 @@ function App() {
     setSelectedDue(due);
     setError('');
     const rawUpi = data.settings.upi_id || import.meta.env.VITE_UPI_ID || '';
-    const upi = String(rawUpi).replace(/[\s,;]+/g, '').trim();
+    const upi = String(rawUpi).replace(/^['\"]+|['\"]+$/g, '').replace(/[\s,;]+/g, '').trim();
     const name = import.meta.env.VITE_UPI_NAME || 'Block 1 Management';
 
     if (!upi) {
