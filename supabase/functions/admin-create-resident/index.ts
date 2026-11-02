@@ -52,14 +52,14 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const roomNumber = String(body.room_number ?? '').trim();
     const fullName = String(body.full_name ?? '').trim();
-    const digits = String(body.phone ?? '').replace(/\\D/g, '');
+    const digits = String(body.phone ?? '').replace(/\D/g, '');
     const password = String(body.password ?? '');
 
     const mobile = digits.startsWith('91') && digits.length === 12 ? digits.slice(2)
       : digits.startsWith('0') && digits.length === 11 ? digits.slice(1) : digits;
     if (!/^[1-9]\\d{2}$/.test(roomNumber)) throw new Error('Enter a valid room number');
     if (!fullName || fullName.length > 100) throw new Error('Enter a valid resident name');
-    if (!/^[6-9]\\d{9}$/.test(mobile)) throw new Error('Enter a valid 10-digit Indian mobile number');
+    if (!/^[6-9]\d{9}$/.test(mobile)) throw new Error('Enter a valid 10-digit Indian mobile number');
     if (password.length < 8 || password.length > 72) throw new Error('Password must be 8–72 characters');
 
     const phone = '+91' + mobile;
