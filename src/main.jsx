@@ -148,20 +148,40 @@ function App() {
   }
 
   async function createDues(e) {
-    e.preventDefault(); setActionBusy(true); setError(''); setNotice('');
+    e.preventDefault();
+    setActionBusy(true); setError(''); setNotice('');
     try {
-      let rooms = data.residents.filter(r => r.role === 'resident' && r.active).map(r => r.room_number);
-      if (dueScope === 'custom') rooms = dueRooms.split(/[\s,;]+/).map(x => x.trim()).filter(Boolean);
-      if (!rooms.length) throw new Error('No active resident rooms found.');
-      if (rooms.some(room => !data.residents.some(r => r.room_number === room && r.role === 'resident' && r.active))) throw new Error('One or more room numbers are not active resident accounts.');
+      let rooms = dueScope === 'custom'
+        ? dueRooms.split(/[\\s,;]+/).map(x => x.trim()).filter(Boolean)
+        : data.residents.filter(r => r.role === 'resident' && r.active).map(r => r.room_number);
+      rooms = [...new Set(rooms)];
+      if (!rooms.length) throw new Error('No active resident accounts found. Add resident accounts before creating dues.');
+      const activeRooms = new Set(data.residents.filter(r => r.role === 'resident' && r.active).map(r => String(r.room_number)));
+      const invalidRooms = rooms.filter(room => !activeRooms.has(String(room)));
+      if (invalidRooms.length) throw new Error('These rooms do not have active resident accounts: ' + invalidRooms.join(', '));
       const amount = Number(dueAmount);
-      if (!dueTitle.trim() || !Number.isFinite(amount) || amount <= 0) throw new Error('Enter a title and valid amount.');
-      const rows = [...new Set(rooms)].map(room_number => ({ room_number, title: dueTitle.trim(), description: dueDescription.trim(), amount, due_month: dueMonth }));
-      const { error } = await supabase.from('dues').upsert(rows, { onConflict: 'room_number,title,due_month', ignoreDuplicates: true });
+      if (!dueTitle.trim() || !Number.isFinite(amount) || amount <= 0) throw new Error('Enter a title and a valid amount.');
+      const monthStart = dueMonth.slice(0, 7) + '-01';
+      const rows = rooms.map(room_number => ({
+        room_number: String(room_number), title: dueTitle.trim(),
+        description: dueDescription.trim() || 'Maintenance charge',
+        amount, due_month: monthStart, status: 'unpaid'
+      }));
+
+      const { data: inserted, error } = await supabase
+        .from('dues')
+        .upsert(rows, { onConflict: 'room_number,title,due_month', ignoreDuplicates: false })
+        .select('id,room_number,status');
       if (error) throw error;
-      setNotice('Dues created for ' + rows.length + ' room(s). Existing matching dues were left unchanged.'); await load();
-    } catch (e) { setError(e.message || 'Unable to create dues.'); }
-    finally { setActionBusy(false); }
+
+      await load();
+      const visible = data.dues;
+      setNotice('Charge saved for ' + rooms.length + ' room(s). Refresh the resident account to see the updated due.');
+    } catch (e) {
+      setError(e.message || 'Unable to create dues.');
+    } finally {
+      setActionBusy(false);
+    }
   }
 
   async function createNotice(e) {
