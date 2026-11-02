@@ -45,6 +45,8 @@ function App() {
   });
 
   const [utr, setUtr] = useState('');
+  const [paymentReference, setPaymentReference] = useState('');
+  const [upiPayLink, setUpiPayLink] = useState('');
   const [qr, setQr] = useState('');
   const [menu, setMenu] = useState(false);
   const [filter, setFilter] = useState('');
@@ -377,28 +379,67 @@ function App() {
     .filter(x => x.status !== 'paid')
     .reduce((a, x) => a + Number(x.amount), 0);
 
+  function buildUpiLink(appScheme = 'upi://pay') {
+    const params = new URLSearchParams({
+      pa: String((import.meta.env.VITE_UPI_ID || data.settings.upi_id || '')).replace(/[\\s,;]+/g, ''),
+      pn: String(import.meta.env.VITE_UPI_NAME || 'Block 1 Management'),
+      am: Number(selectedDue?.amount || 0).toFixed(2),
+      cu: 'INR',
+      tn: paymentReference,
+      tr: paymentReference
+    });
+    return appScheme + '?' + params.toString();
+  }
+
   async function createPayment(due) {
     setSelectedDue(due);
-
-    const upi = import.meta.env.VITE_UPI_ID || data.settings.upi_id;
+    setError('');
+    const rawUpi = import.meta.env.VITE_UPI_ID || data.settings.upi_id || '';
+    const upi = String(rawUpi).replace(/[\\s,;]+/g, '').trim();
     const name = import.meta.env.VITE_UPI_NAME || 'Block 1 Management';
 
     if (!upi) {
       setError('Admin has not configured the UPI ID yet.');
       return;
     }
+    if (!/^[A-Za-z0-9._-]{2,256}@[A-Za-z0-9.-]{2,64}$/.test(upi)) {
+      setError('The configured UPI ID appears invalid. Please ask the administrator to check the UPI ID in Settings.');
+      return;
+    }
 
-    const note = `${profile.room_number} ${monthLabel(due.due_month)} ${due.amount}`;
+    const monthCode = String(due.due_month).slice(0, 7).replace('-', '');
+    const reference = 'B1-' + profile.room_number + '-' + monthCode + '-' + String(due.id).slice(0, 8).toUpperCase();
+    const note = 'Block 1 maintenance ' + reference;
+    setPaymentReference(reference);
 
-    const link = `upi://pay?pa=${encodeURIComponent(upi)}&pn=${encodeURIComponent(name)}&am=${Number(due.amount).toFixed(2)}&cu=INR&tn=${encodeURIComponent(note)}`;
+    const params = new URLSearchParams({
+      pa: upi, pn: name, am: Number(due.amount).toFixed(2),
+      cu: 'INR', tn: note, tr: reference
+    });
+    const genericLink = 'upi://pay?' + params.toString();
+    setUpiPayLink(genericLink);
 
     try {
-      setQr(await QRCode.toDataURL(link, { width: 260, margin: 2 }));
-      setNotice(`Pay ${money(due.amount)} with the QR, then submit your UTR below. Reference: ${note}`);
+      setQr(await QRCode.toDataURL(genericLink, { width: 280, margin: 2, errorCorrectionLevel: 'M' }));
+      setNotice('Pay ' + money(due.amount) + '. Include reference ' + reference + ' in your payment details if your UPI app allows it.');
     } catch {
-      setError('Could not generate QR code');
+      setError('Could not generate payment QR code.');
     }
   }
+
+  function openUpiApp(scheme) {
+    if (!selectedDue || !upiPayLink) return;
+    const params = new URLSearchParams(upiPayLink.split('?')[1] || '');
+    const appLinks = {
+      gpay: 'tez://upi/pay?' + params.toString(),
+      phonepe: 'phonepe://pay?' + params.toString(),
+      paytm: 'paytmmp://pay?' + params.toString(),
+      bhim: 'bhim://upi/pay?' + params.toString(),
+      other: upiPayLink
+    };
+    window.location.href = appLinks[scheme] || upiPayLink;
+  }
+
 
   async function submitUtr(due) {
     if (!utr.trim()) {
@@ -968,11 +1009,18 @@ function App() {
 
                 {qr && (
                   <div className="qr-box">
-                    <h3>Scan to pay</h3>
+                    <h3>Pay maintenance</h3>
+                    <div className="payment-amount">{money(selectedDue?.amount)}</div>
+                    <p className="payment-reference">Reference: <b>{paymentReference}</b></p>
+                    <div className="upi-app-buttons">
+                      <button type="button" className="upi-app gpay" onClick={() => openUpiApp('gpay')}>Google Pay</button>
+                      <button type="button" className="upi-app phonepe" onClick={() => openUpiApp('phonepe')}>PhonePe</button>
+                      <button type="button" className="upi-app paytm" onClick={() => openUpiApp('paytm')}>Paytm</button>
+                      <button type="button" className="upi-app other" onClick={() => openUpiApp('other')}>Other UPI apps</button>
+                    </div>
+                    <p className="muted">Or scan this QR code with any UPI app.</p>
                     <img src={qr} alt="UPI payment QR code" />
-                    <p className="muted">
-                      After completing the payment, enter the UTR/reference number.
-                    </p>
+                    <p className="tiny muted">The reference is included in the UPI payment request. If your app does not carry it across, enter the UTR below after paying.</p>
                     <input
                       value={utr}
                       onChange={e => setUtr(e.target.value)}
