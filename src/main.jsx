@@ -110,6 +110,22 @@ function App() {
 
 
 
+  async function resetResidentPassword(roomNumber) {
+    const nextPassword = window.prompt('Enter a new password (minimum 8 characters) for room ' + roomNumber + ':');
+    if (nextPassword === null) return;
+    if (nextPassword.length < 8) { setError('Password must be at least 8 characters.'); return; }
+    setActionBusy(true); setError(''); setNotice('');
+    try {
+      const { data: result, error } = await supabase.functions.invoke('admin-reset-password', {
+        body: { room_number: String(roomNumber), password: nextPassword }
+      });
+      if (error) throw error;
+      if (result?.error) throw new Error(result.error);
+      setNotice('Password reset for room ' + roomNumber + '. Share the new password securely with the resident.');
+    } catch (e) { setError(e.message || 'Unable to reset password.'); }
+    finally { setActionBusy(false); }
+  }
+
   async function createDues(e) {
     e.preventDefault(); setActionBusy(true); setError(''); setNotice('');
     try {
@@ -894,7 +910,7 @@ function App() {
               <table>
                 <thead>
                   <tr>
-                    <th>Room</th><th>Resident</th><th>Mobile</th><th>Role</th><th>Status</th>
+                    <th>Room</th><th>Resident</th><th>Mobile</th><th>Role</th><th>Status</th><th>Account</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -907,7 +923,8 @@ function App() {
                         <td>{r.full_name || '—'}</td>
                         <td>{r.phone}</td>
                         <td>{r.role}</td>
-                        <td><span className="status paid">Active</span></td>
+                        <td><span className={`status ${r.active ? 'paid' : 'rejected'}`}>{r.active ? 'Active' : 'Inactive'}</span></td>
+                        <td>{r.role === 'resident' && <button className="secondary" disabled={actionBusy} onClick={() => resetResidentPassword(r.room_number)}>Reset password</button>}</td>
                       </tr>
                     ))}
                 </tbody>
