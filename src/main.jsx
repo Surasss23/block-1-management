@@ -449,56 +449,233 @@ function App() {
   }
 
   function exportPdf() {
-    const doc = new jsPDF();
-
-    doc.setFontSize(18);
-    doc.text('Block 1 Management', 14, 18);
-    doc.setFontSize(11);
-    doc.text(`Monthly report · ${monthLabel(new Date())}`, 14, 26);
-
-    let y = 38;
-
-    const rows = data.residents.map(r => {
-      const dues = data.dues.filter(d => d.room_number === r.room_number);
-      const payments = data.payments.filter(
-        p => p.room_number === r.room_number && p.status === 'approved'
-      );
-
-      return [
-        r.room_number,
-        r.full_name || '-',
-        payments.length ? 'Paid' : 'Not paid',
-        money(dues.filter(d => d.status !== 'paid')
-          .reduce((a, d) => a + Number(d.amount), 0))
-      ];
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 14;
+    const reportMonth = new Date().toISOString().slice(0, 7);
+    const reportDate = new Date().toLocaleDateString('en-IN', {
+      day: '2-digit', month: 'short', year: 'numeric'
     });
-
-    doc.text('Room     Resident     Status     Outstanding', 14, y);
-    y += 8;
-
-    rows.forEach(r => {
-      if (y > 275) {
-        doc.addPage();
-        y = 18;
-      }
-
-      doc.text(`${r[0]}     ${r[1]}     ${r[2]}     ${r[3]}`, 14, y);
-      y += 7;
-    });
-
-    y += 8;
-    doc.text(`Approved collection: ${money(collected)}`, 14, y);
-    y += 7;
-    doc.text(`Outstanding dues: ${money(outstanding)}`, 14, y);
-    y += 7;
-
-    doc.text(
-      `Recorded expenses: ${money(data.expenses.reduce((a, x) => a + Number(x.amount), 0))}`,
-      14,
-      y
+    const monthDues = data.dues.filter(d => String(d.due_month).slice(0, 7) === reportMonth);
+    const monthPayments = data.payments.filter(p =>
+      p.created_at && p.created_at.slice(0, 7) === reportMonth
     );
+    const monthExpenses = data.expenses.filter(e =>
+      String(e.expense_date).slice(0, 7) === reportMonth
+    );
+    const approved = monthPayments.filter(p => p.status === 'approved');
+    const pending = monthPayments.filter(p => p.status === 'pending');
+    const totalBilled = monthDues.reduce((sum, d) => sum + Number(d.amount || 0), 0);
+    const totalOutstanding = monthDues.filter(d => d.status !== 'paid')
+      .reduce((sum, d) => sum + Number(d.amount || 0), 0);
+    const totalCollected = approved.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    const totalExpenses = monthExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+    const fmt = value => 'Rs. ' + Number(value || 0).toLocaleString('en-IN', {
+      minimumFractionDigits: 2, maximumFractionDigits: 2
+    });
+    const navy = [43, 48, 67];
+    const muted = [112, 116, 130];
+    const pink = [190, 55, 119];
+    const line = [229, 222, 228];
 
-    doc.save(`block-1-report-${new Date().toISOString().slice(0, 7)}.pdf`);
+    function drawHeader(title, subtitle) {
+      doc.setFillColor(252, 239, 246);
+      doc.rect(0, 0, pageWidth, 34, 'F');
+      doc.setTextColor(...pink);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(19);
+      doc.text('BLOCK 1', margin, 15);
+      doc.setTextColor(...navy);
+      doc.setFontSize(13);
+      doc.text('MANAGEMENT', margin + 28, 15);
+      doc.setFontSize(16);
+      doc.text(title, margin, 25);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(...muted);
+      doc.text(subtitle, pageWidth - margin, 25, { align: 'right' });
+      doc.setDrawColor(...line);
+      doc.line(margin, 36, pageWidth - margin, 36);
+    }
+
+    function drawFooter(page, totalPages) {
+      doc.setDrawColor(...line);
+      doc.line(margin, pageHeight - 10, pageWidth - margin, pageHeight - 10);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(...muted);
+      doc.text('Block 1 Management  |  Confidential community financial report', margin, pageHeight - 5);
+      doc.text('Page ' + page + ' of ' + totalPages, pageWidth - margin, pageHeight - 5, { align: 'right' });
+    }
+
+    drawHeader('Monthly Financial Report', monthLabel(reportMonth + '-01') + '  |  Generated ' + reportDate);
+    let y = 46;
+    const cardGap = 6;
+    const cardWidth = (pageWidth - margin * 2 - cardGap * 3) / 4;
+    const cards = [
+      ['TOTAL BILLED', fmt(totalBilled)],
+      ['COLLECTED', fmt(totalCollected)],
+      ['OUTSTANDING', fmt(totalOutstanding)],
+      ['EXPENSES', fmt(totalExpenses)]
+    ];
+    cards.forEach((card, index) => {
+      const x = margin + index * (cardWidth + cardGap);
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(...line);
+      doc.roundedRect(x, y, cardWidth, 20, 2, 2, 'FD');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(...muted);
+      doc.text(card[0], x + 5, y + 7);
+      doc.setFontSize(12);
+      doc.setTextColor(...navy);
+      doc.text(card[1], x + 5, y + 15);
+    });
+    y += 29;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(...navy);
+    doc.text('Resident-wise maintenance ledger', margin, y);
+    y += 6;
+
+    const columns = [
+      { title: 'ROOM', x: margin, w: 22 },
+      { title: 'RESIDENT NAME', x: margin + 22, w: 55 },
+      { title: 'MONTHLY CHARGE', x: margin + 77, w: 35 },
+      { title: 'PAID', x: margin + 112, w: 33 },
+      { title: 'OUTSTANDING', x: margin + 145, w: 38 },
+      { title: 'STATUS', x: margin + 183, w: 30 }
+    ];
+    const tableWidth = columns[columns.length - 1].x + columns[columns.length - 1].w - margin;
+    function drawTableHead() {
+      doc.setFillColor(246, 241, 245);
+      doc.rect(margin, y, tableWidth, 9, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(...muted);
+      columns.forEach(col => doc.text(col.title, col.x + 2, y + 6));
+      y += 9;
+    }
+    drawTableHead();
+
+    const residents = data.residents.filter(r => r.role === 'resident')
+      .sort((a, b) => String(a.room_number).localeCompare(String(b.room_number), undefined, { numeric: true }));
+    residents.forEach((resident, index) => {
+      const dues = monthDues.filter(d => d.room_number === resident.room_number);
+      const dueAmount = dues.reduce((sum, d) => sum + Number(d.amount || 0), 0);
+      const paidAmount = dues.filter(d => d.status === 'paid').reduce((sum, d) => sum + Number(d.amount || 0), 0);
+      const balance = dues.filter(d => d.status !== 'paid').reduce((sum, d) => sum + Number(d.amount || 0), 0);
+      const status = !dues.length ? 'No charge' : balance <= 0 ? 'Paid' : paidAmount > 0 ? 'Part paid' : 'Unpaid';
+      if (y > pageHeight - 22) {
+        doc.addPage();
+        drawHeader('Monthly Financial Report — continued', monthLabel(reportMonth + '-01'));
+        y = 44;
+        drawTableHead();
+      }
+      if (index % 2 === 1) {
+        doc.setFillColor(253, 250, 252);
+        doc.rect(margin, y, tableWidth, 8, 'F');
+      }
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(...navy);
+      const values = [
+        String(resident.room_number || '—'),
+        String(resident.full_name || '—').slice(0, 32),
+        fmt(dueAmount),
+        fmt(paidAmount),
+        fmt(balance),
+        status
+      ];
+      columns.forEach((col, i) => {
+        const alignRight = i >= 2 && i <= 4;
+        doc.text(values[i], alignRight ? col.x + col.w - 2 : col.x + 2, y + 5.5,
+          alignRight ? { align: 'right' } : {});
+      });
+      doc.setDrawColor(...line);
+      doc.line(margin, y + 8, margin + tableWidth, y + 8);
+      y += 8;
+    });
+
+    if (y > pageHeight - 48) {
+      doc.addPage();
+      drawHeader('Monthly Financial Report — summary', monthLabel(reportMonth + '-01'));
+      y = 46;
+    } else {
+      y += 8;
+    }
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(...navy);
+    doc.text('Payment requests', margin, y);
+    y += 7;
+    const paymentRows = monthPayments.length ? monthPayments : [];
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(...muted);
+    doc.text('ROOM', margin, y);
+    doc.text('UTR / REFERENCE', margin + 28, y);
+    doc.text('AMOUNT', margin + 135, y, { align: 'right' });
+    doc.text('STATUS', margin + 155, y);
+    y += 5;
+    paymentRows.forEach(p => {
+      if (y > pageHeight - 20) {
+        doc.addPage();
+        drawHeader('Payment requests — continued', monthLabel(reportMonth + '-01'));
+        y = 45;
+      }
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(...navy);
+      doc.text(String(p.room_number), margin, y);
+      doc.text(String(p.utr || '—').slice(0, 42), margin + 28, y);
+      doc.text(fmt(p.amount), margin + 135, y, { align: 'right' });
+      doc.text(String(p.status || '').toUpperCase(), margin + 155, y);
+      y += 6;
+    });
+
+    y += 5;
+    if (y > pageHeight - 40) {
+      doc.addPage();
+      drawHeader('Expense summary', monthLabel(reportMonth + '-01'));
+      y = 45;
+    }
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(...navy);
+    doc.text('Expense summary', margin, y);
+    y += 7;
+    if (!monthExpenses.length) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(...muted);
+      doc.text('No expenses recorded for this month.', margin, y);
+    } else {
+      monthExpenses.forEach(expense => {
+        if (y > pageHeight - 20) {
+          doc.addPage();
+          drawHeader('Expense summary — continued', monthLabel(reportMonth + '-01'));
+          y = 45;
+        }
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(...navy);
+        doc.text(String(expense.expense_date), margin, y);
+        doc.text(String(expense.title || 'Expense').slice(0, 55), margin + 30, y);
+        doc.text(fmt(expense.amount), pageWidth - margin, y, { align: 'right' });
+        y += 6;
+      });
+    }
+
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let page = 1; page <= pageCount; page++) {
+      doc.setPage(page);
+      drawFooter(page, pageCount);
+    }
+    doc.save('block-1-monthly-report-' + reportMonth + '.pdf');
   }
 
   if (!configured) return <Setup />;
