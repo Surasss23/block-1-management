@@ -13,6 +13,7 @@ A responsive residential maintenance portal starter for 108 rooms (101–112 thr
 ## 1. Create Supabase project
 1. Create a free project at https://supabase.com.
 2. Open **SQL Editor** and run `supabase/migrations/001_initial_schema.sql`.
+3. For an existing installation, also run `supabase/migrations/002_admin_monthly_dues.sql` to enable the admin-only monthly dues button.
 3. In **Authentication → Providers → Phone**, enable phone/password sign-in as supported by your project configuration. Normalize mobile numbers to E.164 (for India, e.g. `+919876543210`). If Supabase requires an SMS provider for your chosen phone auth configuration, configure it; password sign-in does not mean SMS OTP is automatically sent.
 4. In **Project Settings → API**, copy Project URL and anon/public key. Never expose the service-role key in frontend code.
 5. Create a private bootstrap admin: use Supabase Dashboard → Authentication → Users to create an auth user with a confirmed phone/password. Then run this SQL with that user's auth UUID:
@@ -99,3 +100,9 @@ This repository is a working foundation, not yet the complete management product
 5. Admin rejects; the due remains unpaid and the resident can submit a new UTR.
 6. Run monthly generation twice for the same month; each active room receives exactly one monthly due.
 7. Check PDF totals against the database before relying on reports.
+
+
+## Current admin workflows
+The admin portal now includes bulk dues creation for all active resident accounts or selected rooms, publishing/deleting notices, recording expenses, updating monthly maintenance and UPI settings, and resetting a resident password through the protected Edge Function. The **Generate monthly maintenance** action uses the admin-only function in migration 002. It inserts one monthly maintenance due per active resident and is safe to run again for the same month without duplicating charges.
+
+For an existing deployment, run `supabase/migrations/002_admin_monthly_dues.sql` in the Supabase SQL Editor once before using that button. The regular custom-charge form remains available separately.
