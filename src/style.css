@@ -20,3 +20,6 @@
 .upi-app{border:1px solid #eadbe4;border-radius:10px;background:#fff;padding:11px 14px;font-size:12px;font-weight:700;color:#4d4050}
 .upi-app:hover{border-color:#c13c7c;background:#fff8fb}
 .upi-app.gpay{color:#2872c8}.upi-app.phonepe{color:#5b3aa4}.upi-app.paytm{color:#0875b9}.upi-app.other{color:#a92566}
+
+.resident-community-stats{margin:0 0 22px}
+@media(max-width:800px){.resident-community-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
