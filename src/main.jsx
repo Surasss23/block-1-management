@@ -54,6 +54,21 @@ function App() {
   const [residentPhone, setResidentPhone] = useState('');
   const [residentPassword, setResidentPassword] = useState('');
   const [residentBusy, setResidentBusy] = useState(false);
+  const [dueTitle, setDueTitle] = useState('Monthly maintenance');
+  const [dueDescription, setDueDescription] = useState('');
+  const [dueAmount, setDueAmount] = useState('500');
+  const [dueMonth, setDueMonth] = useState(new Date().toISOString().slice(0, 7) + '-01');
+  const [dueScope, setDueScope] = useState('all');
+  const [dueRooms, setDueRooms] = useState('');
+  const [noticeTitle, setNoticeTitle] = useState('');
+  const [noticeDescription, setNoticeDescription] = useState('');
+  const [expenseTitle, setExpenseTitle] = useState('');
+  const [expenseDescription, setExpenseDescription] = useState('');
+  const [expenseAmount, setExpenseAmount] = useState('');
+  const [expenseDate, setExpenseDate] = useState(new Date().toISOString().slice(0, 10));
+  const [monthlyFee, setMonthlyFee] = useState('500');
+  const [upiId, setUpiId] = useState('');
+  const [actionBusy, setActionBusy] = useState(false);
 
   const configured = !!supabase;
   async function createResident(e) {
@@ -93,6 +108,66 @@ function App() {
   }
 }
 
+
+
+  async function createDues(e) {
+    e.preventDefault(); setActionBusy(true); setError(''); setNotice('');
+    try {
+      let rooms = data.residents.filter(r => r.role === 'resident' && r.active).map(r => r.room_number);
+      if (dueScope === 'custom') rooms = dueRooms.split(/[ ,;\\n]+/).map(x => x.trim()).filter(Boolean);
+      if (!rooms.length) throw new Error('No active resident rooms found.');
+      if (rooms.some(room => !data.residents.some(r => r.room_number === room && r.role === 'resident' && r.active))) throw new Error('One or more room numbers are not active resident accounts.');
+      const amount = Number(dueAmount);
+      if (!dueTitle.trim() || !Number.isFinite(amount) || amount <= 0) throw new Error('Enter a title and valid amount.');
+      const rows = [...new Set(rooms)].map(room_number => ({ room_number, title: dueTitle.trim(), description: dueDescription.trim(), amount, due_month: dueMonth }));
+      const { error } = await supabase.from('dues').upsert(rows, { onConflict: 'room_number,title,due_month', ignoreDuplicates: true });
+      if (error) throw error;
+      setNotice('Dues created for ' + rows.length + ' room(s). Existing matching dues were left unchanged.'); await load();
+    } catch (e) { setError(e.message || 'Unable to create dues.'); }
+    finally { setActionBusy(false); }
+  }
+
+  async function createNotice(e) {
+    e.preventDefault(); setActionBusy(true); setError(''); setNotice('');
+    try {
+      const { error } = await supabase.from('notices').insert({ title: noticeTitle.trim(), description: noticeDescription.trim(), published: true, created_by: session.user.id });
+      if (error) throw error;
+      setNoticeTitle(''); setNoticeDescription(''); setNotice('Notice published successfully.'); await load();
+    } catch (e) { setError(e.message || 'Unable to publish notice.'); }
+    finally { setActionBusy(false); }
+  }
+
+  async function deleteNotice(id) {
+    if (!window.confirm('Delete this notice?')) return;
+    const { error } = await supabase.from('notices').delete().eq('id', id);
+    if (error) setError(error.message); else { setNotice('Notice deleted.'); await load(); }
+  }
+
+  async function createExpense(e) {
+    e.preventDefault(); setActionBusy(true); setError(''); setNotice('');
+    try {
+      const amount = Number(expenseAmount);
+      if (!expenseTitle.trim() || !Number.isFinite(amount) || amount <= 0) throw new Error('Enter expense name and a valid amount.');
+      const { error } = await supabase.from('expenses').insert({ title: expenseTitle.trim(), description: expenseDescription.trim(), amount, expense_date: expenseDate, created_by: session.user.id });
+      if (error) throw error;
+      setExpenseTitle(''); setExpenseDescription(''); setExpenseAmount(''); setNotice('Expense recorded successfully.'); await load();
+    } catch (e) { setError(e.message || 'Unable to record expense.'); }
+    finally { setActionBusy(false); }
+  }
+
+  async function saveSettings(e) {
+    e.preventDefault(); setActionBusy(true); setError(''); setNotice('');
+    try {
+      const fee = Number(monthlyFee);
+      if (!Number.isFinite(fee) || fee <= 0) throw new Error('Enter a valid monthly maintenance amount.');
+      for (const [key, value] of [['monthly_maintenance', fee], ['upi_id', upiId.trim()]]) {
+        const { error } = await supabase.from('settings').upsert({ key, value: JSON.stringify(value) });
+        if (error) throw error;
+      }
+      setNotice('Settings saved. New dues will use the updated maintenance amount.'); await load();
+    } catch (e) { setError(e.message || 'Unable to save settings.'); }
+    finally { setActionBusy(false); }
+  }
 
   useEffect(() => {
     if (!supabase) {
@@ -158,6 +233,9 @@ function App() {
         if (result.error) throw result.error;
       }
 
+      const settingsMap = Object.fromEntries((s.data || []).map(x => [x.key, x.value]));
+      setMonthlyFee(String(settingsMap.monthly_maintenance ?? 500));
+      setUpiId(String(settingsMap.upi_id ?? ''));
       setData({
         dues: d.data || [],
         payments: pa.data || [],
@@ -607,9 +685,24 @@ function App() {
             <PanelTitle title={isAdmin ? 'All outstanding dues' : 'Your dues'} />
 
             {isAdmin ? (
-              <p className="muted">
-                Residents can only see their own dues. Use the admin tools to manage charges.
-              </p>
+              <>
+                <form onSubmit={createDues} className="admin-form">
+                  <h3>Create charges for residents</h3>
+                  <div className="form-grid">
+                    <div><label>Charge title</label><input value={dueTitle} onChange={e => setDueTitle(e.target.value)} required /></div>
+                    <div><label>Amount (₹)</label><input type="number" min="1" step="0.01" value={dueAmount} onChange={e => setDueAmount(e.target.value)} required /></div>
+                    <div><label>Month</label><input type="date" value={dueMonth} onChange={e => setDueMonth(e.target.value)} required /></div>
+                    <div><label>Apply to</label><select value={dueScope} onChange={e => setDueScope(e.target.value)}><option value="all">All active residents</option><option value="custom">Specific rooms</option></select></div>
+                    {dueScope === 'custom' && <div className="wide"><label>Room numbers (comma or space separated)</label><textarea value={dueRooms} onChange={e => setDueRooms(e.target.value)} placeholder="101, 102, 201" required /></div>}
+                    <div className="wide"><label>Description</label><input value={dueDescription} onChange={e => setDueDescription(e.target.value)} placeholder="Optional details" /></div>
+                  </div>
+                  <button className="primary" disabled={actionBusy}>{actionBusy ? 'Creating…' : 'Create dues'}</button>
+                </form>
+                <h3>All dues ({data.dues.length})</h3>
+                <div className="table-wrap"><table><thead><tr><th>Room</th><th>Charge</th><th>Month</th><th>Amount</th><th>Status</th></tr></thead><tbody>
+                  {data.dues.map(d => <tr key={d.id}><td>{d.room_number}</td><td>{d.title}</td><td>{monthLabel(d.due_month)}</td><td>{money(d.amount)}</td><td><span className={`status ${d.status}`}>{d.status}</span></td></tr>)}
+                </tbody></table></div>
+              </>
             ) : (
               <>
                 <div className="due-total">
@@ -666,7 +759,14 @@ function App() {
         {page === 'notices' && (
           <section className="panel">
             <PanelTitle title="Notice board" />
-            <NoticeList notices={data.notices} />
+            {isAdmin && <form onSubmit={createNotice} className="admin-form">
+              <h3>Publish a notice</h3>
+              <label>Title</label><input value={noticeTitle} onChange={e => setNoticeTitle(e.target.value)} required />
+              <label>Description</label><textarea value={noticeDescription} onChange={e => setNoticeDescription(e.target.value)} required />
+              <button className="primary" disabled={actionBusy}>{actionBusy ? 'Publishing…' : 'Publish notice'}</button>
+            </form>}
+            {data.notices.map(n => <div key={n.id} className="notice-admin-row"><NoticeList notices={[n]} />{isAdmin && <button className="reject" onClick={() => deleteNotice(n.id)}>Delete</button>}</div>)}
+            {!data.notices.length && <Empty text="No notices have been published yet." />}
             {!data.notices.length && <Empty text="No notices have been published yet." />}
           </section>
         )}
@@ -823,6 +923,16 @@ function App() {
         {page === 'expenses' && isAdmin && (
           <section className="panel">
             <PanelTitle title="Block expenses" />
+            <form onSubmit={createExpense} className="admin-form">
+              <h3>Record a new expense</h3>
+              <div className="form-grid">
+                <div><label>Expense name</label><input value={expenseTitle} onChange={e => setExpenseTitle(e.target.value)} required /></div>
+                <div><label>Amount (₹)</label><input type="number" min="0.01" step="0.01" value={expenseAmount} onChange={e => setExpenseAmount(e.target.value)} required /></div>
+                <div><label>Date</label><input type="date" value={expenseDate} onChange={e => setExpenseDate(e.target.value)} required /></div>
+                <div><label>Description</label><input value={expenseDescription} onChange={e => setExpenseDescription(e.target.value)} /></div>
+              </div>
+              <button className="primary" disabled={actionBusy}>{actionBusy ? 'Saving…' : 'Add expense'}</button>
+            </form>
             <div className="table-wrap">
               <table>
                 <thead>
@@ -862,6 +972,12 @@ function App() {
         {page === 'settings' && isAdmin && (
           <section className="panel">
             <PanelTitle title="System settings" />
+            <form onSubmit={saveSettings} className="admin-form">
+              <h3>Payment and maintenance settings</h3>
+              <label>Monthly maintenance (₹)</label><input type="number" min="1" step="0.01" value={monthlyFee} onChange={e => setMonthlyFee(e.target.value)} required />
+              <label>UPI ID / VPA</label><input value={upiId} onChange={e => setUpiId(e.target.value)} placeholder="name@bank" />
+              <button className="primary" disabled={actionBusy}>{actionBusy ? 'Saving…' : 'Save settings'}</button>
+            </form>
             <div className="settings-list">
               <div>
                 <b>Monthly maintenance</b>
