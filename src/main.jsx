@@ -153,7 +153,7 @@ function App() {
     try {
       let rooms = dueScope === 'custom'
         ? dueRooms.split(/[\\s,;]+/).map(x => x.trim()).filter(Boolean)
-        : data.residents.filter(r => r.role === 'resident' && r.active).map(r => r.room_number);
+        : data.residents.filter(r => r.role === 'resident' && r.active).map(r => String(r.room_number));
       rooms = [...new Set(rooms)];
       if (!rooms.length) throw new Error('No active resident accounts found. Add resident accounts before creating dues.');
       const activeRooms = new Set(data.residents.filter(r => r.role === 'resident' && r.active).map(r => String(r.room_number)));
@@ -167,16 +167,16 @@ function App() {
         description: dueDescription.trim() || 'Maintenance charge',
         amount, due_month: monthStart, status: 'unpaid'
       }));
-
-      const { data: inserted, error } = await supabase
+      const { data: savedRows, error } = await supabase
         .from('dues')
         .upsert(rows, { onConflict: 'room_number,title,due_month', ignoreDuplicates: false })
-        .select('id,room_number,status');
+        .select('id,room_number,status,amount,due_month');
       if (error) throw error;
-
+      if (!savedRows || savedRows.length !== rows.length) {
+        throw new Error('The database saved ' + (savedRows?.length || 0) + ' of ' + rows.length + ' charges. Please refresh and check the dues table.');
+      }
       await load();
-      const visible = data.dues;
-      setNotice('Charge saved for ' + rooms.length + ' room(s). Refresh the resident account to see the updated due.');
+      setNotice('Successfully published ' + savedRows.length + ' charge(s) for rooms ' + rooms.join(', ') + '. Residents can see them in My dues after refreshing their account.');
     } catch (e) {
       setError(e.message || 'Unable to create dues.');
     } finally {
