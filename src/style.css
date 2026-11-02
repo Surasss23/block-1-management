@@ -3,3 +3,13 @@
 @media(max-width:1150px){.stats-grid{grid-template-columns:repeat(3,1fr)}.main-area{padding:0 25px 25px}.content-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:800px){.sidebar{transform:translateX(-100%);transition:transform .2s;box-shadow:10px 0 35px #46203612}.sidebar.open{transform:translateX(0)}.mobile-menu,.mobile-close{display:inline-flex}.mobile-close{margin-left:auto}.main-area{margin-left:0;padding:0 16px 20px}.topbar{height:75px;margin-bottom:22px;gap:8px}.topbar h2{font-size:16px}.topbar .eyebrow{font-size:8px}.top-right{gap:8px}.date-chip{font-size:9px;padding:7px}.welcome h1{font-size:22px}.stats-grid{grid-template-columns:repeat(2,1fr);gap:9px}.stat-card{padding:13px;min-height:115px}.stat-card b{font-size:18px}.content-grid{grid-template-columns:1fr}.panel{padding:17px}.contact-grid{grid-template-columns:1fr 1fr}.payment-row{flex-wrap:wrap}.decision{margin-left:auto}.resident-highlight{padding:22px}.resident-highlight h1{font-size:30px}}
 @media(max-width:450px){.date-chip{display:none}.contact-grid{grid-template-columns:1fr}.due-row{flex-wrap:wrap}.due-row>div{flex-basis:60%}.due-row strong{margin-left:auto}.due-row .primary{margin-left:auto}.login-card{padding:26px}.welcome .secondary{font-size:10px;padding:9px}.room-pill{font-size:10px}}
+
+.admin-form{padding:18px;margin:16px 0 22px;background:#fff8fb;border:1px solid #f1e5eb;border-radius:13px}
+.admin-form h3{font:700 14px Manrope;margin:0 0 15px}
+.admin-form label{display:block;font-size:11px;font-weight:700;color:#715e69;margin:10px 0 6px}
+.admin-form input,.admin-form textarea,.admin-form select{width:100%;border:1px solid #eadbe4;border-radius:8px;padding:10px;background:#fff;font:inherit;font-size:12px}
+.admin-form textarea{min-height:75px;resize:vertical}
+.admin-form .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px}
+.admin-form .wide{grid-column:1/-1}
+.notice-admin-row{display:flex;align-items:flex-start;gap:12px;border-bottom:1px solid #f5edf1;padding-bottom:10px}
+.notice-admin-row>.notice-row{flex:1}
