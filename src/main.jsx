@@ -148,7 +148,7 @@ function App() {
     e.preventDefault(); setActionBusy(true); setError(''); setNotice('');
     try {
       let rooms = data.residents.filter(r => r.role === 'resident' && r.active).map(r => r.room_number);
-      if (dueScope === 'custom') rooms = dueRooms.split(/[\\s,;]+/).map(x => x.trim()).filter(Boolean);
+      if (dueScope === 'custom') rooms = dueRooms.split(/[\s,;]+/).map(x => x.trim()).filter(Boolean);
       if (!rooms.length) throw new Error('No active resident rooms found.');
       if (rooms.some(room => !data.residents.some(r => r.room_number === room && r.role === 'resident' && r.active))) throw new Error('One or more room numbers are not active resident accounts.');
       const amount = Number(dueAmount);
