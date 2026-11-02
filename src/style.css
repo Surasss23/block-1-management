@@ -13,3 +13,10 @@
 .admin-form .wide{grid-column:1/-1}
 .notice-admin-row{display:flex;align-items:flex-start;gap:12px;border-bottom:1px solid #f5edf1;padding-bottom:10px}
 .notice-admin-row>.notice-row{flex:1}
+
+.payment-amount{font:800 27px Manrope;color:#a92566;margin:0}
+.payment-reference{margin:0;background:#fff5f9;border:1px dashed #e8b8cf;border-radius:9px;padding:9px 13px;color:#8e4a6d;font-size:11px}
+.upi-app-buttons{display:grid;grid-template-columns:repeat(2,minmax(130px,1fr));gap:9px;width:min(100%,440px)}
+.upi-app{border:1px solid #eadbe4;border-radius:10px;background:#fff;padding:11px 14px;font-size:12px;font-weight:700;color:#4d4050}
+.upi-app:hover{border-color:#c13c7c;background:#fff8fb}
+.upi-app.gpay{color:#2872c8}.upi-app.phonepe{color:#5b3aa4}.upi-app.paytm{color:#0875b9}.upi-app.other{color:#a92566}
