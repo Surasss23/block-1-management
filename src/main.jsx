@@ -126,11 +126,24 @@ function App() {
     finally { setActionBusy(false); }
   }
 
+  async function generateMonthlyDues() {
+    setActionBusy(true); setError(''); setNotice('');
+    try {
+      const { data: count, error } = await supabase.rpc('generate_monthly_maintenance_for_admin', {
+        target_month: dueMonth
+      });
+      if (error) throw error;
+      setNotice('Monthly maintenance dues generated. ' + Number(count || 0) + ' new resident charge(s) added.');
+      await load();
+    } catch (e) { setError(e.message || 'Unable to generate monthly dues.'); }
+    finally { setActionBusy(false); }
+  }
+
   async function createDues(e) {
     e.preventDefault(); setActionBusy(true); setError(''); setNotice('');
     try {
       let rooms = data.residents.filter(r => r.role === 'resident' && r.active).map(r => r.room_number);
-      if (dueScope === 'custom') rooms = dueRooms.split(/[ ,;\\n]+/).map(x => x.trim()).filter(Boolean);
+      if (dueScope === 'custom') rooms = dueRooms.split(/[\\s,;]+/).map(x => x.trim()).filter(Boolean);
       if (!rooms.length) throw new Error('No active resident rooms found.');
       if (rooms.some(room => !data.residents.some(r => r.room_number === room && r.role === 'resident' && r.active))) throw new Error('One or more room numbers are not active resident accounts.');
       const amount = Number(dueAmount);
@@ -235,8 +248,9 @@ function App() {
         supabase.from('notices').select('*')
           .eq('published', true)
           .order('created_at', { ascending: false }),
-        supabase.from('expenses').select('*')
-          .order('expense_date', { ascending: false }),
+        p.role === 'admin'
+          ? supabase.from('expenses').select('*').order('expense_date', { ascending: false })
+          : Promise.resolve({ data: [] }),
         p.role === 'admin'
           ? supabase.from('profiles').select('*').order('room_number')
           : Promise.resolve({ data: [] }),
@@ -318,9 +332,10 @@ function App() {
 
   const ownTotal = ownDues.reduce((a, x) => a + Number(x.amount), 0);
 
+  const currentMonth = new Date().toISOString().slice(0, 7);
   const paidRooms = new Set(
     data.payments
-      .filter(x => x.status === 'approved')
+      .filter(x => x.status === 'approved' && x.created_at?.slice(0, 7) === currentMonth)
       .map(x => x.room_number)
   );
 
@@ -712,7 +727,10 @@ function App() {
                     {dueScope === 'custom' && <div className="wide"><label>Room numbers (comma or space separated)</label><textarea value={dueRooms} onChange={e => setDueRooms(e.target.value)} placeholder="101, 102, 201" required /></div>}
                     <div className="wide"><label>Description</label><input value={dueDescription} onChange={e => setDueDescription(e.target.value)} placeholder="Optional details" /></div>
                   </div>
-                  <button className="primary" disabled={actionBusy}>{actionBusy ? 'Creating…' : 'Create dues'}</button>
+                  <div className="form-actions">
+                    <button className="primary" disabled={actionBusy}>{actionBusy ? 'Creating…' : 'Create dues'}</button>
+                    <button type="button" className="secondary" disabled={actionBusy} onClick={generateMonthlyDues}>Generate monthly maintenance</button>
+                  </div>
                 </form>
                 <h3>All dues ({data.dues.length})</h3>
                 <div className="table-wrap"><table><thead><tr><th>Room</th><th>Charge</th><th>Month</th><th>Amount</th><th>Status</th></tr></thead><tbody>
