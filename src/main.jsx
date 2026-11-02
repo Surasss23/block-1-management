@@ -1378,6 +1378,7 @@ function PaymentList({ payments, admin, onDecision }) {
           <b>Room {p.room_number} · {money(p.amount)}</b>
           <small>
             UTR: {p.utr} · {new Date(p.created_at).toLocaleString('en-IN')}
+            {p.reference ? ` · Ref: ${p.reference}` : ''}
           </small>
         </div>
         <span className={`status ${p.status}`}>{p.status}</span>
