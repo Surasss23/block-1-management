@@ -218,7 +218,7 @@ function App() {
     try {
       const fee = Number(monthlyFee);
       if (!Number.isFinite(fee) || fee <= 0) throw new Error('Enter a valid monthly maintenance amount.');
-      for (const [key, value] of [['monthly_maintenance', fee], ['upi_id', upiId.trim()]]) {
+      for (const [key, value] of [['monthly_maintenance', fee], ['upi_id', upiId.replace(/[\s,;]+/g, '').trim()]]) {
         const { error } = await supabase.from('settings').upsert({ key, value: JSON.stringify(value) });
         if (error) throw error;
       }
@@ -381,7 +381,7 @@ function App() {
 
   function buildUpiLink(appScheme = 'upi://pay') {
     const params = new URLSearchParams({
-      pa: String((import.meta.env.VITE_UPI_ID || data.settings.upi_id || '')).replace(/[\\s,;]+/g, ''),
+      pa: String((import.meta.env.VITE_UPI_ID || data.settings.upi_id || '')).replace(/[\s,;]+/g, ''),
       pn: String(import.meta.env.VITE_UPI_NAME || 'Block 1 Management'),
       am: Number(selectedDue?.amount || 0).toFixed(2),
       cu: 'INR',
@@ -395,7 +395,7 @@ function App() {
     setSelectedDue(due);
     setError('');
     const rawUpi = import.meta.env.VITE_UPI_ID || data.settings.upi_id || '';
-    const upi = String(rawUpi).replace(/[\\s,;]+/g, '').trim();
+    const upi = String(rawUpi).replace(/[\s,;]+/g, '').trim();
     const name = import.meta.env.VITE_UPI_NAME || 'Block 1 Management';
 
     if (!upi) {
