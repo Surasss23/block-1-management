@@ -71,6 +71,7 @@ function App() {
   const [monthlyFee, setMonthlyFee] = useState('500');
   const [upiId, setUpiId] = useState('');
   const [actionBusy, setActionBusy] = useState(false);
+  const [communitySummary, setCommunitySummary] = useState(null);
   const [contactName, setContactName] = useState('');
   const [contactRole, setContactRole] = useState('');
   const [contactPhone, setContactPhone] = useState('');
@@ -292,6 +293,8 @@ function App() {
         if (result.error) throw result.error;
       }
 
+      const summaryResult = await supabase.rpc('get_community_payment_summary', { target_month: new Date().toISOString().slice(0, 7) + '-01' });
+      if (!summaryResult.error && summaryResult.data) setCommunitySummary(summaryResult.data);
       const settingsMap = Object.fromEntries((s.data || []).map(x => [x.key, x.value]));
       setMonthlyFee(String(settingsMap.monthly_maintenance ?? 500));
       setUpiId(String(settingsMap.upi_id ?? '').replace(/^['\"]+|['\"]+$/g, '').replace(/[\s,;]+/g, '').trim());
@@ -360,6 +363,8 @@ function App() {
   );
 
   const ownTotal = ownDues.reduce((a, x) => a + Number(x.amount), 0);
+  const ownPaidTotal = data.dues.filter(x => x.room_number === profile?.room_number && x.status === 'paid').reduce((a, x) => a + Number(x.amount), 0);
+  const pendingDueIds = new Set(data.payments.filter(p => p.status === 'pending').map(p => p.due_id));
 
   const currentMonth = new Date().toISOString().slice(0, 7);
   const paidRooms = new Set(
@@ -407,9 +412,15 @@ function App() {
       return;
     }
 
+    if (pendingDueIds.has(due.id)) {
+      setError('Your payment is already submitted and awaiting admin approval. Please allow up to 12 hours.');
+      return;
+    }
+    const monthDate = new Date(String(due.due_month).slice(0, 10) + 'T00:00:00');
+    const monthLabelShort = monthDate.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
     const monthCode = String(due.due_month).slice(0, 7).replace('-', '');
-    const reference = 'B1-' + profile.room_number + '-' + monthCode + '-' + String(due.id).slice(0, 8).toUpperCase();
-    const note = 'Block 1 maintenance ' + reference;
+    const reference = 'B1-R' + profile.room_number + '-' + monthCode;
+    const note = 'Block 1 Room ' + profile.room_number + ' ' + monthLabelShort + ' ' + reference;
     setPaymentReference(reference);
 
     const params = new URLSearchParams({
@@ -455,6 +466,7 @@ function App() {
         due_id: due.id,
         amount: due.amount,
         utr: utr.trim(),
+        reference: paymentReference,
         status: 'pending'
       });
 
@@ -463,7 +475,9 @@ function App() {
       setUtr('');
       setQr('');
       setSelectedDue(null);
-      setNotice('Payment submitted for admin verification.');
+      setUpiPayLink('');
+      setPaymentReference('');
+      setNotice('Payment submitted successfully. Approval is pending; please allow up to 12 hours. You cannot submit another payment for this due while it is pending.');
       await load();
     } catch (e) {
       setError(e.message);
@@ -929,7 +943,7 @@ function App() {
 
                 <div className="resident-highlight">
                   <div>
-                    <span className="eyebrow">TOTAL OUTSTANDING</span>
+                    <span className="eyebrow">YOUR OUTSTANDING BALANCE</span>
                     <h1>{money(ownTotal)}</h1>
                     <p>
                       {ownDues.length
@@ -939,11 +953,18 @@ function App() {
                   </div>
                   <Wallet size={38} />
                 </div>
+                <div className="stats-grid resident-community-stats">
+                  <Stat icon={Users} label="Total rooms" value={communitySummary?.total_rooms ?? 108} />
+                  <Stat icon={CheckCircle2} label="Rooms paid this month" value={communitySummary?.paid_rooms ?? 0} tone="green" />
+                  <Stat icon={Clock3} label="Rooms not yet paid" value={communitySummary?.unpaid_rooms ?? 108} tone="amber" />
+                  <Stat icon={IndianRupee} label="Community amount collected" value={money(communitySummary?.amount_collected ?? 0)} tone="pink" />
+                  <Stat icon={Wallet} label="Your paid amount" value={money(ownPaidTotal)} tone="rose" />
+                </div>
 
                 <div className="content-grid">
                   <section className="panel">
                     <PanelTitle title="Your pending dues" action={() => setPage('dues')} />
-                    <DueList dues={ownDues.slice(0, 5)} onPay={createPayment} />
+                    <DueList dues={ownDues.slice(0, 5)} onPay={createPayment} pendingDueIds={pendingDueIds} />
                   </section>
 
                   <section className="panel">
@@ -995,9 +1016,11 @@ function App() {
                       <small>{monthLabel(d.due_month)} · {d.description || 'Maintenance charge'}</small>
                     </div>
                     <strong>{money(d.amount)}</strong>
-                    <button className="primary compact" onClick={() => createPayment(d)}>
-                      Pay now
-                    </button>
+                    {pendingDueIds.has(d.id) ? (
+                      <span className="status pending">Approval pending · up to 12h</span>
+                    ) : (
+                      <button className="primary compact" onClick={() => createPayment(d)}>Pay now</button>
+                    )}
                   </div>
                 )) : (
                   <div className="empty">
@@ -1329,7 +1352,7 @@ function PanelTitle({ title, action }) {
   );
 }
 
-function DueList({ dues, onPay }) {
+function DueList({ dues, onPay, pendingDueIds = new Set() }) {
   return dues.length
     ? dues.map(d => (
       <div className="due-row" key={d.id}>
@@ -1338,7 +1361,9 @@ function DueList({ dues, onPay }) {
           <small>{monthLabel(d.due_month)}</small>
         </div>
         <strong>{money(d.amount)}</strong>
-        <button className="primary compact" onClick={() => onPay(d)}>Pay now</button>
+        {pendingDueIds.has(d.id)
+          ? <span className="status pending">Approval pending · up to 12h</span>
+          : <button className="primary compact" onClick={() => onPay(d)}>Pay now</button>}
       </div>
     ))
     : <Empty text="No pending dues." />;
