@@ -106,3 +106,7 @@ This repository is a working foundation, not yet the complete management product
 The admin portal now includes bulk dues creation for all active resident accounts or selected rooms, publishing/deleting notices, recording expenses, updating monthly maintenance and UPI settings, and resetting a resident password through the protected Edge Function. The **Generate monthly maintenance** action uses the admin-only function in migration 002. It inserts one monthly maintenance due per active resident and is safe to run again for the same month without duplicating charges.
 
 For an existing deployment, run `supabase/migrations/002_admin_monthly_dues.sql` in the Supabase SQL Editor once before using that button. The regular custom-charge form remains available separately.
+
+
+### Resident payment status and community dashboard
+Migration `003_community_dashboard_and_payment_reference.sql` adds a payment reference column and a security-definer aggregate function that returns only community-wide monthly totals (room counts and approved collection), not other residents' personal records. The resident dashboard uses these aggregates alongside the resident's own paid amount. A pending payment request locks the matching due from another submission until an admin approves or rejects it. The portal tells residents to allow up to 12 hours for review; this is a stated review window, not an automatic 12-hour approval or unlock.
