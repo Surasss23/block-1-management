@@ -69,6 +69,11 @@ function App() {
   const [monthlyFee, setMonthlyFee] = useState('500');
   const [upiId, setUpiId] = useState('');
   const [actionBusy, setActionBusy] = useState(false);
+  const [contactName, setContactName] = useState('');
+  const [contactRole, setContactRole] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+  const [contactKind, setContactKind] = useState('general');
+
 
   const configured = !!supabase;
   async function createResident(e) {
@@ -182,6 +187,28 @@ function App() {
       setExpenseTitle(''); setExpenseDescription(''); setExpenseAmount(''); setNotice('Expense recorded successfully.'); await load();
     } catch (e) { setError(e.message || 'Unable to record expense.'); }
     finally { setActionBusy(false); }
+  }
+
+  async function createContact(e) {
+    e.preventDefault(); setActionBusy(true); setError(''); setNotice('');
+    try {
+      const phone = contactPhone.replace(/[^0-9+]/g, '');
+      if (!contactName.trim() || !contactRole.trim() || !phone) throw new Error('Enter contact name, role and phone.');
+      const { error } = await supabase.from('contacts').insert({
+        name: contactName.trim(), role_label: contactRole.trim(), phone,
+        kind: contactKind, sort_order: data.contacts.length, active: true
+      });
+      if (error) throw error;
+      setContactName(''); setContactRole(''); setContactPhone('');
+      setNotice('Contact added successfully.'); await load();
+    } catch (e) { setError(e.message || 'Unable to add contact.'); }
+    finally { setActionBusy(false); }
+  }
+
+  async function deleteContact(id) {
+    if (!window.confirm('Remove this contact from the resident directory?')) return;
+    const { error } = await supabase.from('contacts').update({ active: false }).eq('id', id);
+    if (error) setError(error.message); else { setNotice('Contact removed.'); await load(); }
   }
 
   async function saveSettings(e) {
@@ -808,16 +835,26 @@ function App() {
         {page === 'contacts' && (
           <section className="panel">
             <PanelTitle title="Important contacts" />
+            {isAdmin && <form onSubmit={createContact} className="admin-form">
+              <h3>Add an important contact</h3>
+              <div className="form-grid">
+                <div><label>Contact name</label><input value={contactName} onChange={e => setContactName(e.target.value)} required placeholder="Lift Emergency" /></div>
+                <div><label>Role / description</label><input value={contactRole} onChange={e => setContactRole(e.target.value)} required placeholder="Emergency support" /></div>
+                <div><label>Phone number</label><input value={contactPhone} onChange={e => setContactPhone(e.target.value)} required placeholder="+91…" /></div>
+                <div><label>Category</label><select value={contactKind} onChange={e => setContactKind(e.target.value)}><option value="general">General</option><option value="admin">Admin</option><option value="emergency">Emergency</option><option value="complaint">Complaint</option></select></div>
+              </div>
+              <button className="primary" disabled={actionBusy}>{actionBusy ? 'Saving…' : 'Add contact'}</button>
+            </form>}
             <div className="contact-grid">
               {(data.contacts.length ? data.contacts : [
                 { name: 'Block Administrator', role: 'Admin', phone: '', kind: 'admin' },
                 { name: 'Lift Emergency', role: 'Emergency support', phone: '', kind: 'emergency' },
                 { name: 'Maintenance Complaint', role: 'Complaints', phone: '', kind: 'complaint' }
               ]).map(c => (
-                <div className="contact-card" key={c.kind}>
+                <div className="contact-card" key={c.id || c.kind}>
                   <div className="contact-icon"><Phone /></div>
                   <b>{c.name}</b>
-                  <small>{c.role}</small>
+                  <small>{c.role_label || c.role}</small>
                   <div className="contact-actions">
                     <a className="secondary" href={c.phone ? `tel:${c.phone}` : undefined}>Call</a>
                     <a
@@ -829,6 +866,7 @@ function App() {
                       WhatsApp
                     </a>
                   </div>
+                  {isAdmin && c.id && <button className="reject" onClick={() => deleteContact(c.id)}>Remove contact</button>}
                 </div>
               ))}
             </div>
