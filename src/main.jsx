@@ -49,8 +49,50 @@ function App() {
   const [menu, setMenu] = useState(false);
   const [filter, setFilter] = useState('');
   const [selectedDue, setSelectedDue] = useState(null);
+  const [residentRoom, setResidentRoom] = useState('');
+  const [residentName, setResidentName] = useState('');
+  const [residentPhone, setResidentPhone] = useState('');
+  const [residentPassword, setResidentPassword] = useState('');
+  const [residentBusy, setResidentBusy] = useState(false);
 
   const configured = !!supabase;
+  async function createResident(e) {
+  e.preventDefault();
+  setResidentBusy(true);
+  setError('');
+  setNotice('');
+
+  try {
+    const { data: result, error } = await supabase.functions.invoke(
+      'admin-create-resident',
+      {
+        body: {
+          room_number: residentRoom.trim(),
+          full_name: residentName.trim(),
+          phone: residentPhone.trim(),
+          password: residentPassword
+        }
+      }
+    );
+
+    if (error) throw error;
+    if (result?.error) throw new Error(result.error);
+
+    setNotice('Resident account created successfully.');
+
+    setResidentRoom('');
+    setResidentName('');
+    setResidentPhone('');
+    setResidentPassword('');
+
+    await load();
+  } catch (e) {
+    setError(e.message || 'Unable to create resident.');
+  } finally {
+    setResidentBusy(false);
+  }
+}
+
 
   useEffect(() => {
     if (!supabase) {
@@ -672,6 +714,70 @@ function App() {
         {page === 'residents' && isAdmin && (
           <section className="panel">
             <PanelTitle title="Residents" />
+            <form onSubmit={createResident} style={{
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+  gap: '12px',
+  padding: '18px',
+  marginBottom: '20px',
+  background: '#fff8fb',
+  border: '1px solid #f1e5eb',
+  borderRadius: '12px'
+}}>
+  <div>
+    <label>Room number</label>
+    <input
+      value={residentRoom}
+      onChange={e => setResidentRoom(e.target.value)}
+      placeholder="e.g. 101"
+      required
+    />
+  </div>
+
+  <div>
+    <label>Resident name</label>
+    <input
+      value={residentName}
+      onChange={e => setResidentName(e.target.value)}
+      placeholder="Full name"
+      required
+    />
+  </div>
+
+  <div>
+    <label>Mobile number</label>
+    <input
+      type="tel"
+      value={residentPhone}
+      onChange={e => setResidentPhone(e.target.value)}
+      placeholder="10-digit mobile number"
+      required
+    />
+  </div>
+
+  <div>
+    <label>Initial password</label>
+    <input
+      type="password"
+      value={residentPassword}
+      onChange={e => setResidentPassword(e.target.value)}
+      placeholder="Minimum 8 characters"
+      minLength={8}
+      required
+    />
+  </div>
+
+  <div style={{ gridColumn: '1 / -1' }}>
+    <button
+      className="primary"
+      type="submit"
+      disabled={residentBusy}
+    >
+      {residentBusy ? 'Creating account...' : '+ Add Resident'}
+    </button>
+  </div>
+</form>
+
             <div className="toolbar">
               <div className="search">
                 <Search size={16} />
