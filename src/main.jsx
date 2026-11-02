@@ -1,4 +1,3 @@
-
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createClient } from '@supabase/supabase-js';
@@ -65,8 +64,8 @@ function App() {
 
     const {
       data: { subscription }
-    } = supabase.auth.onAuthStateChange((_e, s) => {
-      setSession(s);
+    } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+      setSession(currentSession);
     });
 
     return () => subscription.unsubscribe();
@@ -86,46 +85,35 @@ function App() {
     setError('');
 
     try {
-      const {
-        data: p,
-        error: pe
-      } = await supabase
+      const { data: p, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', session.user.id)
         .single();
 
-      if (pe) throw pe;
-
+      if (profileError) throw profileError;
       setProfile(p);
 
       const [d, pa, n, e, c, s, ct] = await Promise.all([
         supabase.from('dues').select('*')
           .order('created_at', { ascending: false }),
-
         supabase.from('payments').select('*')
           .order('created_at', { ascending: false }),
-
         supabase.from('notices').select('*')
           .eq('published', true)
           .order('created_at', { ascending: false }),
-
         supabase.from('expenses').select('*')
           .order('expense_date', { ascending: false }),
-
         p.role === 'admin'
           ? supabase.from('profiles').select('*').order('room_number')
           : Promise.resolve({ data: [] }),
-
         supabase.from('settings').select('*'),
-
         supabase.from('contacts').select('*')
-          .eq('active', true)
-          .order('sort_order')
+          .eq('active', true).order('sort_order')
       ]);
 
-      for (const r of [d, pa, n, e, c, s, ct]) {
-        if (r.error) throw r.error;
+      for (const result of [d, pa, n, e, c, s, ct]) {
+        if (result.error) throw result.error;
       }
 
       setData({
@@ -139,7 +127,6 @@ function App() {
           (s.data || []).map(x => [x.key, x.value])
         )
       });
-
     } catch (e) {
       setError(e.message || 'Unable to load account data');
     } finally {
@@ -154,10 +141,17 @@ function App() {
     setError('');
 
     try {
-      const normalizedMobile = mobile.replace(/\D/g, '');
+      let normalizedMobile = mobile.replace(/\D/g, '');
 
-      if (normalizedMobile.length < 10) {
-        throw new Error('Enter a valid mobile number.');
+      // Accept 10-digit Indian numbers, +91 numbers and 0-prefixed numbers.
+      if (normalizedMobile.startsWith('91') && normalizedMobile.length === 12) {
+        normalizedMobile = normalizedMobile.slice(2);
+      } else if (normalizedMobile.startsWith('0') && normalizedMobile.length === 11) {
+        normalizedMobile = normalizedMobile.slice(1);
+      }
+
+      if (!/^[6-9]\d{9}$/.test(normalizedMobile)) {
+        throw new Error('Enter a valid 10-digit Indian mobile number.');
       }
 
       const loginEmail = `${normalizedMobile}@block1.example`;
@@ -168,7 +162,6 @@ function App() {
       });
 
       if (error) throw error;
-
     } catch (e) {
       setError(e.message);
     } finally {
@@ -187,9 +180,7 @@ function App() {
     x => x.room_number === profile?.room_number && x.status !== 'paid'
   );
 
-  const ownTotal = ownDues.reduce(
-    (a, x) => a + Number(x.amount), 0
-  );
+  const ownTotal = ownDues.reduce((a, x) => a + Number(x.amount), 0);
 
   const paidRooms = new Set(
     data.payments
@@ -224,14 +215,8 @@ function App() {
     const link = `upi://pay?pa=${encodeURIComponent(upi)}&pn=${encodeURIComponent(name)}&am=${Number(due.amount).toFixed(2)}&cu=INR&tn=${encodeURIComponent(note)}`;
 
     try {
-      setQr(await QRCode.toDataURL(link, {
-        width: 260,
-        margin: 2
-      }));
-
-      setNotice(`Pay ${money(due.amount)} with the QR, then submit your UTR below.
-Reference: ${note}`);
-
+      setQr(await QRCode.toDataURL(link, { width: 260, margin: 2 }));
+      setNotice(`Pay ${money(due.amount)} with the QR, then submit your UTR below. Reference: ${note}`);
     } catch {
       setError('Could not generate QR code');
     }
@@ -261,7 +246,6 @@ Reference: ${note}`);
       setSelectedDue(null);
       setNotice('Payment submitted for admin verification.');
       await load();
-
     } catch (e) {
       setError(e.message);
     } finally {
@@ -291,17 +275,13 @@ Reference: ${note}`);
 
     doc.setFontSize(18);
     doc.text('Block 1 Management', 14, 18);
-
     doc.setFontSize(11);
     doc.text(`Monthly report · ${monthLabel(new Date())}`, 14, 26);
 
     let y = 38;
 
     const rows = data.residents.map(r => {
-      const dues = data.dues.filter(
-        d => d.room_number === r.room_number
-      );
-
+      const dues = data.dues.filter(d => d.room_number === r.room_number);
       const payments = data.payments.filter(
         p => p.room_number === r.room_number && p.status === 'approved'
       );
@@ -310,10 +290,8 @@ Reference: ${note}`);
         r.room_number,
         r.full_name || '-',
         payments.length ? 'Paid' : 'Not paid',
-        money(
-          dues.filter(d => d.status !== 'paid')
-            .reduce((a, d) => a + Number(d.amount), 0)
-        )
+        money(dues.filter(d => d.status !== 'paid')
+          .reduce((a, d) => a + Number(d.amount), 0))
       ];
     });
 
@@ -337,9 +315,7 @@ Reference: ${note}`);
     y += 7;
 
     doc.text(
-      `Recorded expenses: ${money(
-        data.expenses.reduce((a, x) => a + Number(x.amount), 0)
-      )}`,
+      `Recorded expenses: ${money(data.expenses.reduce((a, x) => a + Number(x.amount), 0))}`,
       14,
       y
     );
@@ -363,29 +339,21 @@ Reference: ${note}`);
       <div className="login-wrap">
         <div className="login-card">
           <div className="brand-mark"><Home /></div>
-
           <p className="eyebrow">RESIDENT & ADMIN PORTAL</p>
-
           <h1>Block 1 <span>Management</span></h1>
-
-          <p className="muted">
-            Your home. Your community.
-            One simple place.
-          </p>
+          <p className="muted">Your home. Your community. One simple place.</p>
 
           <form onSubmit={login}>
             <label>Mobile number</label>
-
             <input
               value={mobile}
               onChange={e => setMobile(e.target.value)}
-              placeholder="98765 43210"
+              placeholder="+91 98765 43210"
               autoComplete="tel"
               required
             />
 
             <label>Password</label>
-
             <input
               type="password"
               value={password}
@@ -414,7 +382,6 @@ Reference: ${note}`);
     ['dues', 'My dues', Wallet],
     ['notices', 'Notice board', Bell],
     ['contacts', 'Contacts', Phone],
-
     ...(isAdmin ? [
       ['residents', 'Residents', Users],
       ['payments', 'Payment approvals', ShieldCheck],
@@ -426,21 +393,11 @@ Reference: ${note}`);
 
   return (
     <div className="app-shell">
-
       <aside className={`sidebar ${menu ? 'open' : ''}`}>
-
         <div className="side-brand">
           <div className="brand-mark small"><Home /></div>
-
-          <div>
-            <b>Block 1</b>
-            <small>Management</small>
-          </div>
-
-          <button
-            className="icon-btn mobile-close"
-            onClick={() => setMenu(false)}
-          >
+          <div><b>Block 1</b><small>Management</small></div>
+          <button className="icon-btn mobile-close" onClick={() => setMenu(false)}>
             <X />
           </button>
         </div>
@@ -458,7 +415,6 @@ Reference: ${note}`);
           >
             <Icon size={18} />
             {label}
-
             {id === 'payments' &&
               data.payments.filter(p => p.status === 'pending').length > 0 &&
               <i>{data.payments.filter(p => p.status === 'pending').length}</i>
@@ -471,7 +427,6 @@ Reference: ${note}`);
             <div className="avatar">
               {(profile?.full_name || 'R').slice(0, 1).toUpperCase()}
             </div>
-
             <div>
               <b>{profile?.full_name || 'Resident'}</b>
               <small>
@@ -481,19 +436,14 @@ Reference: ${note}`);
           </div>
 
           <button className="nav-item" onClick={logout}>
-            <LogOut size={18} />
-            Sign out
+            <LogOut size={18} /> Sign out
           </button>
         </div>
       </aside>
 
       <main className="main-area">
-
         <header className="topbar">
-          <button
-            className="icon-btn mobile-menu"
-            onClick={() => setMenu(true)}
-          >
+          <button className="icon-btn mobile-menu" onClick={() => setMenu(true)}>
             <Menu />
           </button>
 
@@ -511,7 +461,6 @@ Reference: ${note}`);
                 year: 'numeric'
               })}
             </span>
-
             <div className="avatar">
               {(profile?.full_name || 'R').slice(0, 1).toUpperCase()}
             </div>
@@ -520,16 +469,14 @@ Reference: ${note}`);
 
         {error && (
           <div className="alert error-box">
-            <AlertCircle size={17} />
-            {error}
+            <AlertCircle size={17} /> {error}
             <button onClick={() => setError('')}>×</button>
           </div>
         )}
 
         {notice && (
           <div className="alert success-box">
-            <CheckCircle2 size={17} />
-            {notice}
+            <CheckCircle2 size={17} /> {notice}
             <button onClick={() => setNotice('')}>×</button>
           </div>
         )}
@@ -541,14 +488,9 @@ Reference: ${note}`);
                 <div className="welcome">
                   <div>
                     <p className="eyebrow">ADMINISTRATOR DASHBOARD</p>
-                    <h1>
-                      Good day, {profile?.full_name?.split(' ')[0] || 'Admin'}.
-                    </h1>
-                    <p className="muted">
-                      Here’s what’s happening in your community.
-                    </p>
+                    <h1>Good day, {profile?.full_name?.split(' ')[0] || 'Admin'}.</h1>
+                    <p className="muted">Here’s what’s happening in your community.</p>
                   </div>
-
                   <button className="secondary" onClick={exportPdf}>
                     <FileDown size={16} /> Export report
                   </button>
@@ -556,58 +498,24 @@ Reference: ${note}`);
 
                 <div className="stats-grid">
                   <Stat icon={Users} label="Total rooms" value={totalRooms} />
-
-                  <Stat
-                    icon={CheckCircle2}
-                    label="Rooms with approved payments"
-                    value={paidCount}
-                    tone="green"
-                  />
-
-                  <Stat
-                    icon={Clock3}
-                    label="Rooms with pending dues"
-                    value={Math.max(0, totalRooms - paidCount)}
-                    tone="amber"
-                  />
-
-                  <Stat
-                    icon={IndianRupee}
-                    label="Approved collection"
-                    value={money(collected)}
-                    tone="pink"
-                  />
-
-                  <Stat
-                    icon={Wallet}
-                    label="Outstanding dues"
-                    value={money(outstanding)}
-                    tone="rose"
-                  />
+                  <Stat icon={CheckCircle2} label="Rooms with approved payments" value={paidCount} tone="green" />
+                  <Stat icon={Clock3} label="Rooms with pending dues" value={Math.max(0, totalRooms - paidCount)} tone="amber" />
+                  <Stat icon={IndianRupee} label="Approved collection" value={money(collected)} tone="pink" />
+                  <Stat icon={Wallet} label="Outstanding dues" value={money(outstanding)} tone="rose" />
                 </div>
 
                 <div className="content-grid">
                   <section className="panel">
-                    <PanelTitle
-                      title="Recent payment requests"
-                      action={() => setPage('payments')}
-                    />
-
+                    <PanelTitle title="Recent payment requests" action={() => setPage('payments')} />
                     <PaymentList
-                      payments={data.payments
-                        .filter(p => p.status === 'pending')
-                        .slice(0, 5)}
+                      payments={data.payments.filter(p => p.status === 'pending').slice(0, 5)}
                       admin
                       onDecision={decidePayment}
                     />
                   </section>
 
                   <section className="panel">
-                    <PanelTitle
-                      title="Latest notices"
-                      action={() => setPage('notices')}
-                    />
-
+                    <PanelTitle title="Latest notices" action={() => setPage('notices')} />
                     <NoticeList notices={data.notices.slice(0, 4)} />
                   </section>
                 </div>
@@ -616,22 +524,11 @@ Reference: ${note}`);
               <>
                 <div className="welcome">
                   <div>
-                    <p className="eyebrow">
-                      RESIDENT DASHBOARD · ROOM {profile?.room_number}
-                    </p>
-
-                    <h1>
-                      Hello, {profile?.full_name?.split(' ')[0] || 'there'}.
-                    </h1>
-
-                    <p className="muted">
-                      Here’s your maintenance overview.
-                    </p>
+                    <p className="eyebrow">RESIDENT DASHBOARD · ROOM {profile?.room_number}</p>
+                    <h1>Hello, {profile?.full_name?.split(' ')[0] || 'there'}.</h1>
+                    <p className="muted">Here’s your maintenance overview.</p>
                   </div>
-
-                  <span className="room-pill">
-                    Room {profile?.room_number}
-                  </span>
+                  <span className="room-pill">Room {profile?.room_number}</span>
                 </div>
 
                 <div className="resident-highlight">
@@ -644,29 +541,17 @@ Reference: ${note}`);
                         : 'You are all caught up. Thank you!'}
                     </p>
                   </div>
-
                   <Wallet size={38} />
                 </div>
 
                 <div className="content-grid">
                   <section className="panel">
-                    <PanelTitle
-                      title="Your pending dues"
-                      action={() => setPage('dues')}
-                    />
-
-                    <DueList
-                      dues={ownDues.slice(0, 5)}
-                      onPay={createPayment}
-                    />
+                    <PanelTitle title="Your pending dues" action={() => setPage('dues')} />
+                    <DueList dues={ownDues.slice(0, 5)} onPay={createPayment} />
                   </section>
 
                   <section className="panel">
-                    <PanelTitle
-                      title="Community notices"
-                      action={() => setPage('notices')}
-                    />
-
+                    <PanelTitle title="Community notices" action={() => setPage('notices')} />
                     <NoticeList notices={data.notices.slice(0, 4)} />
                   </section>
                 </div>
@@ -681,37 +566,26 @@ Reference: ${note}`);
 
             {isAdmin ? (
               <p className="muted">
-                Residents can only see their own dues.
-                Use the admin tools to manage charges.
+                Residents can only see their own dues. Use the admin tools to manage charges.
               </p>
             ) : (
               <>
                 <div className="due-total">
-                  <span>Total to pay</span>
-                  <b>{money(ownTotal)}</b>
+                  <span>Total to pay</span><b>{money(ownTotal)}</b>
                 </div>
 
-                {ownDues.length ? (
-                  ownDues.map(d => (
-                    <div className="due-row" key={d.id}>
-                      <div>
-                        <b>{d.title}</b>
-                        <small>
-                          {monthLabel(d.due_month)} · {d.description || 'Maintenance charge'}
-                        </small>
-                      </div>
-
-                      <strong>{money(d.amount)}</strong>
-
-                      <button
-                        className="primary compact"
-                        onClick={() => createPayment(d)}
-                      >
-                        Pay now
-                      </button>
+                {ownDues.length ? ownDues.map(d => (
+                  <div className="due-row" key={d.id}>
+                    <div>
+                      <b>{d.title}</b>
+                      <small>{monthLabel(d.due_month)} · {d.description || 'Maintenance charge'}</small>
                     </div>
-                  ))
-                ) : (
+                    <strong>{money(d.amount)}</strong>
+                    <button className="primary compact" onClick={() => createPayment(d)}>
+                      Pay now
+                    </button>
+                  </div>
+                )) : (
                   <div className="empty">
                     <CheckCircle2 />
                     <b>No outstanding dues</b>
@@ -722,19 +596,15 @@ Reference: ${note}`);
                 {qr && (
                   <div className="qr-box">
                     <h3>Scan to pay</h3>
-
                     <img src={qr} alt="UPI payment QR code" />
-
                     <p className="muted">
                       After completing the payment, enter the UTR/reference number.
                     </p>
-
                     <input
                       value={utr}
                       onChange={e => setUtr(e.target.value)}
                       placeholder="Enter 12-digit UTR / reference"
                     />
-
                     <button
                       className="primary"
                       onClick={() => {
@@ -755,57 +625,28 @@ Reference: ${note}`);
           <section className="panel">
             <PanelTitle title="Notice board" />
             <NoticeList notices={data.notices} />
-
-            {!data.notices.length && (
-              <Empty text="No notices have been published yet." />
-            )}
+            {!data.notices.length && <Empty text="No notices have been published yet." />}
           </section>
         )}
 
         {page === 'contacts' && (
           <section className="panel">
             <PanelTitle title="Important contacts" />
-
             <div className="contact-grid">
               {(data.contacts.length ? data.contacts : [
-                {
-                  name: 'Block Administrator',
-                  role: 'Admin',
-                  phone: '',
-                  kind: 'admin'
-                },
-                {
-                  name: 'Lift Emergency',
-                  role: 'Emergency support',
-                  phone: '',
-                  kind: 'emergency'
-                },
-                {
-                  name: 'Maintenance Complaint',
-                  role: 'Complaints',
-                  phone: '',
-                  kind: 'complaint'
-                }
+                { name: 'Block Administrator', role: 'Admin', phone: '', kind: 'admin' },
+                { name: 'Lift Emergency', role: 'Emergency support', phone: '', kind: 'emergency' },
+                { name: 'Maintenance Complaint', role: 'Complaints', phone: '', kind: 'complaint' }
               ]).map(c => (
                 <div className="contact-card" key={c.kind}>
                   <div className="contact-icon"><Phone /></div>
-
                   <b>{c.name}</b>
                   <small>{c.role}</small>
-
                   <div className="contact-actions">
+                    <a className="secondary" href={c.phone ? `tel:${c.phone}` : undefined}>Call</a>
                     <a
                       className="secondary"
-                      href={c.phone ? `tel:${c.phone}` : undefined}
-                    >
-                      Call
-                    </a>
-
-                    <a
-                      className="secondary"
-                      href={c.phone
-                        ? `https://wa.me/${c.phone.replace(/\D/g, '')}`
-                        : undefined}
+                      href={c.phone ? `https://wa.me/${c.phone.replace(/\D/g, '')}` : undefined}
                       target="_blank"
                       rel="noreferrer"
                     >
@@ -821,58 +662,39 @@ Reference: ${note}`);
         {page === 'payments' && isAdmin && (
           <section className="panel">
             <PanelTitle title="Payment verification" />
-
             <p className="muted">
               Verify each UTR against the actual receiving account before approving.
             </p>
-
-            <PaymentList
-              payments={data.payments}
-              admin
-              onDecision={decidePayment}
-            />
+            <PaymentList payments={data.payments} admin onDecision={decidePayment} />
           </section>
         )}
 
         {page === 'residents' && isAdmin && (
           <section className="panel">
             <PanelTitle title="Residents" />
-
             <div className="toolbar">
               <div className="search">
                 <Search size={16} />
-
                 <input
                   value={filter}
                   onChange={e => setFilter(e.target.value)}
                   placeholder="Search room or resident"
                 />
               </div>
-
-              <span className="muted">
-                {data.residents.length} profiles
-              </span>
+              <span className="muted">{data.residents.length} profiles</span>
             </div>
 
             <div className="table-wrap">
               <table>
                 <thead>
                   <tr>
-                    <th>Room</th>
-                    <th>Resident</th>
-                    <th>Mobile</th>
-                    <th>Role</th>
-                    <th>Status</th>
+                    <th>Room</th><th>Resident</th><th>Mobile</th><th>Role</th><th>Status</th>
                   </tr>
                 </thead>
-
                 <tbody>
                   {data.residents
-                    .filter(r =>
-                      `${r.room_number} ${r.full_name} ${r.phone}`
-                        .toLowerCase()
-                        .includes(filter.toLowerCase())
-                    )
+                    .filter(r => `${r.room_number} ${r.full_name} ${r.phone}`
+                      .toLowerCase().includes(filter.toLowerCase()))
                     .map(r => (
                       <tr key={r.id}>
                         <td><b>{r.room_number}</b></td>
@@ -887,8 +709,7 @@ Reference: ${note}`);
             </div>
 
             <p className="tiny muted">
-              Resident creation and password resets are handled through
-              secured admin functions.
+              Resident creation and password resets require secured admin functions.
             </p>
           </section>
         )}
@@ -896,18 +717,11 @@ Reference: ${note}`);
         {page === 'expenses' && isAdmin && (
           <section className="panel">
             <PanelTitle title="Block expenses" />
-
             <div className="table-wrap">
               <table>
                 <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Expense</th>
-                    <th>Details</th>
-                    <th>Amount</th>
-                  </tr>
+                  <tr><th>Date</th><th>Expense</th><th>Details</th><th>Amount</th></tr>
                 </thead>
-
                 <tbody>
                   {data.expenses.map(e => (
                     <tr key={e.id}>
@@ -920,15 +734,9 @@ Reference: ${note}`);
                 </tbody>
               </table>
             </div>
-
             <div className="due-total">
               <span>Total recorded expenses</span>
-
-              <b>
-                {money(data.expenses.reduce(
-                  (a, x) => a + Number(x.amount), 0
-                ))}
-              </b>
+              <b>{money(data.expenses.reduce((a, x) => a + Number(x.amount), 0))}</b>
             </div>
           </section>
         )}
@@ -936,12 +744,9 @@ Reference: ${note}`);
         {page === 'reports' && isAdmin && (
           <section className="panel">
             <PanelTitle title="Monthly reports" />
-
             <p className="muted">
-              Download a summary of residents, paid status, dues,
-              collection and recorded expenses.
+              Download a summary of residents, paid status, dues, collection and recorded expenses.
             </p>
-
             <button className="primary" onClick={exportPdf}>
               <FileDown size={17} /> Download monthly PDF
             </button>
@@ -951,35 +756,24 @@ Reference: ${note}`);
         {page === 'settings' && isAdmin && (
           <section className="panel">
             <PanelTitle title="System settings" />
-
             <div className="settings-list">
               <div>
                 <b>Monthly maintenance</b>
                 <small>Default monthly charge per active room</small>
               </div>
-
-              <strong>
-                {money(data.settings.monthly_maintenance || 500)}
-              </strong>
+              <strong>{money(data.settings.monthly_maintenance || 500)}</strong>
             </div>
-
             <div className="settings-list">
               <div>
                 <b>UPI payment ID</b>
                 <small>Configured in Supabase settings</small>
               </div>
-
               <strong>
-                {data.settings.upi_id ||
-                  import.meta.env.VITE_UPI_ID ||
-                  'Not configured'}
+                {data.settings.upi_id || import.meta.env.VITE_UPI_ID || 'Not configured'}
               </strong>
             </div>
-
             <p className="tiny muted">
-              Sensitive settings and user administration should be
-              changed through secured admin operations, never by exposing
-              the Supabase service-role key in this website.
+              Never expose the Supabase service-role key in this website.
             </p>
           </section>
         )}
@@ -987,7 +781,6 @@ Reference: ${note}`);
         <footer>
           Block 1 Management <span>·</span> Built for a simpler community
         </footer>
-
       </main>
     </div>
   );
@@ -996,10 +789,7 @@ Reference: ${note}`);
 function Stat({ icon: Icon, label, value, tone = '' }) {
   return (
     <div className="stat-card">
-      <div className={`stat-icon ${tone}`}>
-        <Icon size={19} />
-      </div>
-
+      <div className={`stat-icon ${tone}`}><Icon size={19} /></div>
       <span>{label}</span>
       <b>{value}</b>
     </div>
@@ -1010,7 +800,6 @@ function PanelTitle({ title, action }) {
   return (
     <div className="panel-title">
       <h3>{title}</h3>
-
       {action && (
         <button className="text-btn" onClick={action}>
           View all <ArrowUpRight size={15} />
@@ -1023,64 +812,38 @@ function PanelTitle({ title, action }) {
 function DueList({ dues, onPay }) {
   return dues.length
     ? dues.map(d => (
-        <div className="due-row" key={d.id}>
-          <div>
-            <b>{d.title}</b>
-            <small>{monthLabel(d.due_month)}</small>
-          </div>
-
-          <strong>{money(d.amount)}</strong>
-
-          <button
-            className="primary compact"
-            onClick={() => onPay(d)}
-          >
-            Pay now
-          </button>
+      <div className="due-row" key={d.id}>
+        <div>
+          <b>{d.title}</b>
+          <small>{monthLabel(d.due_month)}</small>
         </div>
-      ))
+        <strong>{money(d.amount)}</strong>
+        <button className="primary compact" onClick={() => onPay(d)}>Pay now</button>
+      </div>
+    ))
     : <Empty text="No pending dues." />;
 }
 
 function PaymentList({ payments, admin, onDecision }) {
   return payments.length
     ? payments.map(p => (
-        <div className="payment-row" key={p.id}>
-          <div className="payment-avatar">
-            {String(p.room_number).slice(-2)}
-          </div>
-
-          <div className="payment-info">
-            <b>Room {p.room_number} · {money(p.amount)}</b>
-
-            <small>
-              UTR: {p.utr} · {new Date(p.created_at).toLocaleString('en-IN')}
-            </small>
-          </div>
-
-          <span className={`status ${p.status}`}>
-            {p.status}
-          </span>
-
-          {admin && p.status === 'pending' && (
-            <div className="decision">
-              <button
-                className="approve"
-                onClick={() => onDecision(p, 'approved')}
-              >
-                Approve
-              </button>
-
-              <button
-                className="reject"
-                onClick={() => onDecision(p, 'rejected')}
-              >
-                Reject
-              </button>
-            </div>
-          )}
+      <div className="payment-row" key={p.id}>
+        <div className="payment-avatar">{String(p.room_number).slice(-2)}</div>
+        <div className="payment-info">
+          <b>Room {p.room_number} · {money(p.amount)}</b>
+          <small>
+            UTR: {p.utr} · {new Date(p.created_at).toLocaleString('en-IN')}
+          </small>
         </div>
-      ))
+        <span className={`status ${p.status}`}>{p.status}</span>
+        {admin && p.status === 'pending' && (
+          <div className="decision">
+            <button className="approve" onClick={() => onDecision(p, 'approved')}>Approve</button>
+            <button className="reject" onClick={() => onDecision(p, 'rejected')}>Reject</button>
+          </div>
+        )}
+      </div>
+    ))
     : <Empty text="No payment requests to show." />;
 }
 
@@ -1088,22 +851,15 @@ function NoticeList({ notices }) {
   return notices.map(n => (
     <div className="notice-row" key={n.id}>
       <div className="notice-icon"><Bell size={17} /></div>
-
       <div>
         <b>{n.title}</b>
         <p>{n.description}</p>
-
         <small>
           {new Date(n.created_at).toLocaleDateString('en-IN')}
           {n.amount ? ` · ${money(n.amount)}` : ''}
         </small>
-
         {n.image_url && (
-          <img
-            className="notice-image"
-            src={n.image_url}
-            alt="Notice attachment"
-          />
+          <img className="notice-image" src={n.image_url} alt="Notice attachment" />
         )}
       </div>
     </div>
@@ -1124,24 +880,19 @@ function Setup() {
     <div className="login-wrap">
       <div className="login-card setup-card">
         <div className="brand-mark"><Home /></div>
-
         <p className="eyebrow">PROJECT SETUP REQUIRED</p>
-
         <h1>Block 1 <span>Management</span></h1>
-
         <p className="muted">
           The application is ready, but it needs your Supabase project credentials.
         </p>
-
         <ol>
           <li>Create a Supabase project.</li>
           <li>Run the SQL migration in <code>supabase/migrations/001_initial_schema.sql</code>.</li>
-          <li>Configure your project URL and publishable key.</li>
-          <li>Deploy the website through Vercel.</li>
+          <li>Copy <code>.env.example</code> to <code>.env</code> and add your project URL and publishable key.</li>
+          <li>Run <code>npm install</code> and <code>npm run dev</code>.</li>
         </ol>
-
         <p className="tiny muted">
-          See README.md for the deployment and security instructions.
+          See README.md for deployment, security and monthly billing instructions.
         </p>
       </div>
     </div>
