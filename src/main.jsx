@@ -394,7 +394,7 @@ function App() {
   async function createPayment(due) {
     setSelectedDue(due);
     setError('');
-    const rawUpi = import.meta.env.VITE_UPI_ID || data.settings.upi_id || '';
+    const rawUpi = data.settings.upi_id || import.meta.env.VITE_UPI_ID || '';
     const upi = String(rawUpi).replace(/[\s,;]+/g, '').trim();
     const name = import.meta.env.VITE_UPI_NAME || 'Block 1 Management';
 
