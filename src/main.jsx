@@ -929,6 +929,7 @@ function App() {
                       payments={data.payments.filter(p => p.status === 'pending').slice(0, 5)}
                       admin
                       onDecision={decidePayment}
+                      onEditAmount={correctReceivedAmount}
                     />
                   </section>
 
