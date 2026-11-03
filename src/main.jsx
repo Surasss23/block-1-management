@@ -506,6 +506,44 @@ function App() {
     }
   }
 
+  async function correctReceivedAmount(payment) {
+    const entered = window.prompt('Enter the correct amount actually received for room ' + payment.room_number + ':', String(payment.amount));
+    if (entered === null) return;
+    const amount = Number(entered);
+    if (!Number.isFinite(amount) || amount <= 0) { setError('Enter a valid received amount greater than zero.'); return; }
+    setActionBusy(true); setError(''); setNotice('');
+    try {
+      const { error } = await supabase.rpc('admin_correct_payment_amount', {
+        payment_id: payment.id,
+        corrected_amount: amount
+      });
+      if (error) throw error;
+      setNotice('Received amount corrected to ' + money(amount) + '. The linked due status has been recalculated.');
+      await load();
+    } catch (e) { setError(e.message || 'Unable to correct received amount.'); }
+    finally { setActionBusy(false); }
+  }
+
+  async function deleteResident(roomNumber) {
+    const resident = data.residents.find(r => String(r.room_number) === String(roomNumber));
+    if (!resident) return;
+    const confirmed = window.confirm(
+      'Permanently delete the account for Room ' + roomNumber + '? This also deletes its dues and payment records. This cannot be undone.'
+    );
+    if (!confirmed) return;
+    setActionBusy(true); setError(''); setNotice('');
+    try {
+      const { data: result, error } = await supabase.functions.invoke('admin-delete-resident', {
+        body: { room_number: String(roomNumber) }
+      });
+      if (error) throw error;
+      if (result?.error) throw new Error(result.error);
+      setNotice('Resident account for Room ' + roomNumber + ' was deleted.');
+      await load();
+    } catch (e) { setError(e.message || 'Unable to delete resident.'); }
+    finally { setActionBusy(false); }
+  }
+
   async function decidePayment(p, status) {
     const { error } = await supabase
       .from('payments')
@@ -1097,7 +1135,7 @@ function App() {
             <p className="muted">
               Verify each UTR against the actual receiving account before approving.
             </p>
-            <PaymentList payments={data.payments} admin onDecision={decidePayment} />
+            <PaymentList payments={data.payments} admin onDecision={decidePayment} onEditAmount={correctReceivedAmount} />
           </section>
         )}
 
@@ -1198,7 +1236,7 @@ function App() {
                         <td>{r.phone}</td>
                         <td>{r.role}</td>
                         <td><span className={`status ${r.active ? 'paid' : 'rejected'}`}>{r.active ? 'Active' : 'Inactive'}</span></td>
-                        <td>{r.role === 'resident' && <button className="secondary" disabled={actionBusy} onClick={() => resetResidentPassword(r.room_number)}>Reset password</button>}</td>
+                        <td>{r.role === 'resident' && <div className="resident-actions"><button className="secondary" disabled={actionBusy} onClick={() => resetResidentPassword(r.room_number)}>Reset password</button><button className="danger-outline" disabled={actionBusy} onClick={() => deleteResident(r.room_number)}>Delete</button></div>}</td>
                       </tr>
                     ))}
                 </tbody>
@@ -1339,7 +1377,7 @@ function DueList({ dues, onPay, pendingDueIds = new Set() }) {
     : <Empty text="No pending dues." />;
 }
 
-function PaymentList({ payments, admin, onDecision }) {
+function PaymentList({ payments, admin, onDecision, onEditAmount }) {
   return payments.length
     ? payments.map(p => (
       <div className="payment-row" key={p.id}>
@@ -1352,12 +1390,13 @@ function PaymentList({ payments, admin, onDecision }) {
           </small>
         </div>
         <span className={`status ${p.status}`}>{p.status}</span>
-        {admin && p.status === 'pending' && (
-          <div className="decision">
+        {admin && <div className="decision">
+          <button className="secondary" onClick={() => onEditAmount(p)}>Edit amount</button>
+          {p.status === 'pending' && <>
             <button className="approve" onClick={() => onDecision(p, 'approved')}>Approve</button>
             <button className="reject" onClick={() => onDecision(p, 'rejected')}>Reject</button>
-          </div>
-        )}
+          </>}
+        </div>}
       </div>
     ))
     : <Empty text="No payment requests to show." />;
