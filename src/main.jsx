@@ -85,6 +85,7 @@ function App() {
   const [offlineAmount, setOfflineAmount] = useState('');
   const [offlineMode, setOfflineMode] = useState('cash');
   const [offlineNote, setOfflineNote] = useState('');
+  const [offlineDate, setOfflineDate] = useState(new Date().toISOString().slice(0, 10));
   const [liveClock, setLiveClock] = useState(new Date());
   const [liveLastUpdated, setLiveLastUpdated] = useState(new Date());
 
@@ -532,7 +533,7 @@ function App() {
     try {
       const { error } = await supabase.rpc('admin_record_offline_payment', {
         target_due_id: due.id, received_amount: amount, payment_mode: offlineMode,
-        receipt_ref: receiptRef, note: offlineNote.trim() || null
+        receipt_ref: receiptRef, note: offlineNote.trim() || null, received_on: offlineDate
       });
       if (error) throw error;
       const doc = new jsPDF({ unit: 'mm', format: 'a5' });
@@ -546,7 +547,7 @@ function App() {
         ['For', due.title + ' · ' + monthLabel(due.due_month)],
         ['Amount received', money(amount)],
         ['Payment mode', offlineMode.replace('_',' ').toUpperCase()],
-        ['Date', new Date().toLocaleString('en-IN')],
+        ['Date', new Date(offlineDate + 'T00:00:00').toLocaleDateString('en-IN')],
         ['Admin note', offlineNote.trim() || '—']
       ];
       let y=48;
@@ -554,7 +555,7 @@ function App() {
       doc.setDrawColor(232,222,230);doc.line(14,y+2,134,y+2);
       doc.setFontSize(8);doc.setTextColor(120,105,117);doc.text('Computer-generated receipt · Block 1 Management',14,y+11);
       doc.save('Block1-Receipt-'+receiptRef+'.pdf');
-      setOfflineDueId(''); setOfflineAmount(''); setOfflineNote('');
+      setOfflineDueId(''); setOfflineAmount(''); setOfflineNote(''); setOfflineDate(new Date().toISOString().slice(0, 10));
       setNotice('Offline payment recorded and approved. Receipt ' + receiptRef + ' downloaded.');
       await load({ silent: true });
     } catch (e) { setError(e.message || 'Unable to record offline payment.'); }
@@ -1082,8 +1083,8 @@ function App() {
                   </div>
                 </form>
                 <h3>All dues ({data.dues.length})</h3>
-                <div className="table-wrap"><table><thead><tr><th>Room</th><th>Charge</th><th>Month</th><th>Amount</th><th>Status</th></tr></thead><tbody>
-                  {data.dues.map(d => <tr key={d.id}><td>{d.room_number}</td><td>{d.title}</td><td>{monthLabel(d.due_month)}</td><td>{money(d.amount)}</td><td><span className={`status ${d.status}`}>{d.status}</span></td></tr>)}
+                <div className="table-wrap"><table><thead><tr><th>Room</th><th>Charge</th><th>Month</th><th>Created date</th><th>Amount</th><th>Status</th></tr></thead><tbody>
+                  {data.dues.map(d => <tr key={d.id}><td>{d.room_number}</td><td>{d.title}</td><td>{monthLabel(d.due_month)}</td><td>{d.created_at ? new Date(d.created_at).toLocaleDateString('en-IN') : '—'}</td><td>{money(d.amount)}</td><td><span className={`status ${d.status}`}>{d.status}</span></td></tr>)}
                 </tbody></table></div>
               </>
             ) : (
@@ -1216,6 +1217,7 @@ function App() {
                   {data.dues.filter(d=>d.status!=='paid').map(d=><option key={d.id} value={d.id}>Room {d.room_number} · {d.title} · {monthLabel(d.due_month)} · {money(d.amount)}</option>)}
                 </select></div>
                 <div><label>Amount actually received (₹)</label><input type="number" min="0.01" step="0.01" value={offlineAmount} onChange={e=>setOfflineAmount(e.target.value)} required /></div>
+                <div><label>Payment date</label><input type="date" value={offlineDate} onChange={e=>setOfflineDate(e.target.value)} required /></div>
                 <div><label>Payment method</label><select value={offlineMode} onChange={e=>setOfflineMode(e.target.value)}><option value="cash">Cash</option><option value="bank_transfer">Bank transfer</option><option value="upi">UPI received by admin</option><option value="cheque">Cheque</option><option value="other">Other</option></select></div>
                 <div className="wide"><label>Notes (optional)</label><input value={offlineNote} onChange={e=>setOfflineNote(e.target.value)} placeholder="Collected in person / transaction detail" /></div>
               </div>
@@ -1308,7 +1310,7 @@ function App() {
               <table>
                 <thead>
                   <tr>
-                    <th>Room</th><th>Resident</th><th>Mobile</th><th>Role</th><th>Status</th><th>Account</th>
+                    <th>Room</th><th>Resident</th><th>Mobile</th><th>Joined date</th><th>Role</th><th>Status</th><th>Account</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1320,6 +1322,7 @@ function App() {
                         <td><b>{r.room_number}</b></td>
                         <td>{r.full_name || '—'}</td>
                         <td>{r.phone}</td>
+                        <td>{r.created_at ? new Date(r.created_at).toLocaleDateString('en-IN') : '—'}</td>
                         <td>{r.role}</td>
                         <td><span className={`status ${r.active ? 'paid' : 'rejected'}`}>{r.active ? 'Active' : 'Inactive'}</span></td>
                         <td>{r.role === 'resident' && <div className="resident-actions"><button className="secondary" disabled={actionBusy} onClick={() => resetResidentPassword(r.room_number)}>Reset password</button><button className="danger-outline" disabled={actionBusy} onClick={() => deleteResident(r.room_number)}>Delete</button></div>}</td>
