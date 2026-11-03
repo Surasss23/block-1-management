@@ -110,3 +110,7 @@ For an existing deployment, run `supabase/migrations/002_admin_monthly_dues.sql`
 
 ### Resident payment status and community dashboard
 Migration `003_community_dashboard_and_payment_reference.sql` adds a payment reference column and a security-definer aggregate function that returns only community-wide monthly totals (room counts and approved collection), not other residents' personal records. The resident dashboard uses these aggregates alongside the resident's own paid amount. A pending payment request locks the matching due from another submission until an admin approves or rejects it. The portal tells residents to allow up to 12 hours for review; this is a stated review window, not an automatic 12-hour approval or unlock.
+
+
+### Admin payment corrections and resident deletion
+Run `supabase/migrations/004_admin_payment_correction.sql` once to enable the protected admin action for correcting a recorded payment amount. The action changes the recorded amount but does not silently reverse an admin's approved/rejected decision. Deploy `supabase/functions/admin-delete-resident` from the Supabase Dashboard Edge Functions editor before using the Delete action in Residents. Deleting a resident permanently deletes that resident's payment history and dues before removing their Auth account; the room remains in the room registry and can be assigned to a new resident later. Confirm the room carefully before deletion.
