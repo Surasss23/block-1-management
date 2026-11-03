@@ -1572,4 +1572,25 @@ function Setup() {
   );
 }
 
-createRoot(document.getElementById('root')).render(<App />);
+class AppErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error) { return { error }; }
+  componentDidCatch(error) { console.error('Block 1 render error:', error); }
+  render() {
+    if (this.state.error) return (
+      <div className="login-wrap">
+        <div className="login-card">
+          <h1>Block 1 <span>Management</span></h1>
+          <p className="error">The app encountered an error while opening.</p>
+          <p className="tiny muted">{String(this.state.error?.message || this.state.error)}</p>
+          <button className="primary full" onClick={() => window.location.reload()}>Reload application</button>
+        </div>
+      </div>
+    );
+    return this.props.children;
+  }
+}
+
+createRoot(document.getElementById('root')).render(
+  <AppErrorBoundary><App /></AppErrorBoundary>
+);
