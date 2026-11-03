@@ -23,3 +23,9 @@
 
 .resident-community-stats{margin:0 0 22px}
 @media(max-width:800px){.resident-community-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.resident-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.danger-outline{border:1px solid #e8b7bf;background:#fff7f7;color:#b74655;border-radius:9px;padding:8px 11px;font-size:10px;font-weight:700}
+.danger-outline:hover{background:#fff0f0;border-color:#d98b96}
+.payment-row .decision{flex-wrap:wrap;justify-content:flex-end}
+@media(max-width:800px){.payment-row .decision{width:100%;margin-left:0}.resident-actions{min-width:170px}}
