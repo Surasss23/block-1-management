@@ -57,6 +57,12 @@ Deno.serve(async (req) => {
     if (!resident || resident.role !== 'resident') throw new Error('Resident account not found');
     if (resident.id === user.id) throw new Error('You cannot delete your own administrator account');
 
+    // Remove child records first because payments restrict deleting linked dues.
+    const { error: paymentDeleteError } = await admin.from('payments').delete().eq('room_number', room);
+    if (paymentDeleteError) throw paymentDeleteError;
+    const { error: dueDeleteError } = await admin.from('dues').delete().eq('room_number', room);
+    if (dueDeleteError) throw dueDeleteError;
+
     const { error: deleteError } = await admin.auth.admin.deleteUser(resident.id);
     if (deleteError) throw deleteError;
 
