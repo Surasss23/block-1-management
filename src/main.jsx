@@ -76,6 +76,12 @@ function App() {
   const [contactRole, setContactRole] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [contactKind, setContactKind] = useState('general');
+  const [offlineDueId, setOfflineDueId] = useState('');
+  const [offlineAmount, setOfflineAmount] = useState('');
+  const [offlineMode, setOfflineMode] = useState('cash');
+  const [offlineNote, setOfflineNote] = useState('');
+  const [liveClock, setLiveClock] = useState(new Date());
+  const [liveLastUpdated, setLiveLastUpdated] = useState(new Date());
 
 
   const configured = !!supabase;
@@ -249,6 +255,16 @@ function App() {
   }
 
   useEffect(() => {
+    if (page !== 'live-tv' || !isAdmin) return;
+    const clockTimer = window.setInterval(() => setLiveClock(new Date()), 1000);
+    const refreshTimer = window.setInterval(async () => {
+      await load({ silent: true });
+      setLiveLastUpdated(new Date());
+    }, 30000);
+    return () => { window.clearInterval(clockTimer); window.clearInterval(refreshTimer); };
+  }, [page, isAdmin, session]);
+
+  useEffect(() => {
     if (!supabase) {
       setLoading(false);
       return;
@@ -276,8 +292,8 @@ function App() {
     }
   }, [session]);
 
-  async function load() {
-    setLoading(true);
+  async function load({ silent = false } = {}) {
+    if (!silent) setLoading(true);
     setError('');
 
     try {
@@ -504,6 +520,64 @@ function App() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function recordOfflinePayment(e) {
+    e.preventDefault();
+    const due = data.dues.find(d => d.id === offlineDueId);
+    if (!due) { setError('Select an outstanding due first.'); return; }
+    const amount = Number(offlineAmount);
+    if (!Number.isFinite(amount) || amount <= 0) { setError('Enter the amount actually received.'); return; }
+    const receiptRef = 'B1-OFF-' + due.room_number + '-' + Date.now().toString().slice(-8);
+    setActionBusy(true); setError(''); setNotice('');
+    try {
+      const { error } = await supabase.rpc('admin_record_offline_payment', {
+        target_due_id: due.id, received_amount: amount, payment_mode: offlineMode,
+        receipt_ref: receiptRef, note: offlineNote.trim() || null
+      });
+      if (error) throw error;
+      const doc = new jsPDF({ unit: 'mm', format: 'a5' });
+      doc.setFillColor(252, 239, 246); doc.rect(0, 0, 148, 34, 'F');
+      doc.setTextColor(190, 55, 119); doc.setFont('helvetica', 'bold'); doc.setFontSize(18);
+      doc.text('BLOCK 1', 14, 15); doc.setTextColor(45, 39, 51); doc.setFontSize(11); doc.text('PAYMENT RECEIPT', 14, 24);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+      const lines = [
+        ['Receipt number', receiptRef],
+        ['Resident / room', (data.residents.find(r => r.room_number === due.room_number)?.full_name || 'Resident') + ' / ' + due.room_number],
+        ['For', due.title + ' · ' + monthLabel(due.due_month)],
+        ['Amount received', money(amount)],
+        ['Payment mode', offlineMode.replace('_',' ').toUpperCase()],
+        ['Date', new Date().toLocaleString('en-IN')],
+        ['Admin note', offlineNote.trim() || '—']
+      ];
+      let y=48;
+      lines.forEach(([label,value])=>{doc.setTextColor(120,105,117);doc.text(label,14,y);doc.setTextColor(45,39,51);doc.text(String(value),65,y);y+=12;});
+      doc.setDrawColor(232,222,230);doc.line(14,y+2,134,y+2);
+      doc.setFontSize(8);doc.setTextColor(120,105,117);doc.text('Computer-generated receipt · Block 1 Management',14,y+11);
+      doc.save('Block1-Receipt-'+receiptRef+'.pdf');
+      setOfflineDueId(''); setOfflineAmount(''); setOfflineNote('');
+      setNotice('Offline payment recorded and approved. Receipt ' + receiptRef + ' downloaded.');
+      await load({ silent: true });
+    } catch (e) { setError(e.message || 'Unable to record offline payment.'); }
+    finally { setActionBusy(false); }
+  }
+
+  async function deletePayment(payment) {
+    const ok = window.confirm('Delete payment ' + (payment.utr || payment.id) + ' for Room ' + payment.room_number + '? The linked due will be recalculated. This cannot be undone.');
+    if (!ok) return;
+    setActionBusy(true); setError(''); setNotice('');
+    try {
+      const { error } = await supabase.rpc('admin_delete_payment', { target_payment_id: payment.id });
+      if (error) throw error;
+      setNotice('Payment record deleted. The linked due status was recalculated.');
+      await load();
+    } catch (e) { setError(e.message || 'Unable to delete payment record.'); }
+    finally { setActionBusy(false); }
+  }
+
+  function openLiveFullscreen() {
+    const root = document.getElementById('block1-live-screen');
+    if (root?.requestFullscreen) root.requestFullscreen();
   }
 
   async function correctReceivedAmount(payment) {
@@ -805,6 +879,7 @@ function App() {
       ['payments', 'Payment approvals', ShieldCheck],
       ['expenses', 'Expenses', ReceiptText],
       ['reports', 'Reports', FileDown],
+      ['live-tv', 'Block 1 Live Updates', CalendarDays],
       ['settings', 'Settings', Settings]
     ] : [])
   ];
@@ -1133,10 +1208,21 @@ function App() {
         {page === 'payments' && isAdmin && (
           <section className="panel">
             <PanelTitle title="Payment verification" />
-            <p className="muted">
-              Verify each UTR against the actual receiving account before approving.
-            </p>
-            <PaymentList payments={data.payments} admin onDecision={decidePayment} onEditAmount={correctReceivedAmount} />
+            <p className="muted">Verify UTRs against the actual account statement. Offline receipts are recorded as approved payments.</p>
+            <form className="admin-form" onSubmit={recordOfflinePayment}>
+              <h3>Record an offline payment / issue receipt</h3>
+              <div className="form-grid">
+                <div className="wide"><label>Outstanding resident due</label><select value={offlineDueId} onChange={e=>{const d=data.dues.find(x=>x.id===e.target.value);setOfflineDueId(e.target.value);setOfflineAmount(d?String(d.amount):'');}} required>
+                  <option value="">Select room and due</option>
+                  {data.dues.filter(d=>d.status!=='paid').map(d=><option key={d.id} value={d.id}>Room {d.room_number} · {d.title} · {monthLabel(d.due_month)} · {money(d.amount)}</option>)}
+                </select></div>
+                <div><label>Amount actually received (₹)</label><input type="number" min="0.01" step="0.01" value={offlineAmount} onChange={e=>setOfflineAmount(e.target.value)} required /></div>
+                <div><label>Payment method</label><select value={offlineMode} onChange={e=>setOfflineMode(e.target.value)}><option value="cash">Cash</option><option value="bank_transfer">Bank transfer</option><option value="upi">UPI received by admin</option><option value="cheque">Cheque</option><option value="other">Other</option></select></div>
+                <div className="wide"><label>Notes (optional)</label><input value={offlineNote} onChange={e=>setOfflineNote(e.target.value)} placeholder="Collected in person / transaction detail" /></div>
+              </div>
+              <button className="primary" disabled={actionBusy}>{actionBusy?'Recording…':'Record payment & download receipt'}</button>
+            </form>
+            <PaymentList payments={data.payments} admin onDecision={decidePayment} onEditAmount={correctReceivedAmount} onDelete={deletePayment} />
           </section>
         )}
 
@@ -1247,6 +1333,37 @@ function App() {
             <p className="tiny muted">
               Resident creation and password resets require secured admin functions.
             </p>
+          </section>
+        )}
+
+        {page === 'live-tv' && isAdmin && (
+          <section className="live-tv-shell" id="block1-live-screen">
+            <div className="live-tv-top">
+              <div><span className="live-kicker">BLOCK 1 RESIDENTIAL COMMUNITY</span><h1>Block 1 Live Updates</h1><p>Community payment and notice board</p></div>
+              <div className="live-clock"><b>{liveClock.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</b><span>{liveClock.toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'long',year:'numeric'})}</span><button className="secondary" onClick={openLiveFullscreen}>⛶ Full screen</button></div>
+            </div>
+            <div className="live-stats">
+              <div><span>Total rooms</span><b>{communitySummary?.total_rooms ?? 108}</b></div>
+              <div><span>Paid rooms</span><b>{communitySummary?.paid_rooms ?? 0}</b></div>
+              <div><span>Unpaid rooms</span><b>{communitySummary?.unpaid_rooms ?? 108}</b></div>
+              <div><span>Collected this month</span><b>{money(communitySummary?.amount_collected ?? 0)}</b></div>
+              <div><span>Pending approvals</span><b>{data.payments.filter(p=>p.status==='pending').length}</b></div>
+            </div>
+            <div className="live-tv-grid">
+              <section className="live-tv-card"><h2>Recent payments</h2>
+                {data.payments.filter(p=>p.status==='approved').slice(0,8).map(p=><div className="live-feed-row" key={p.id}><b>Room {p.room_number}</b><span>{money(p.amount)}</span><small>{p.payment_method ? p.payment_method.replace('_',' ') : 'UPI'} · {new Date(p.created_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</small></div>)}
+                {!data.payments.some(p=>p.status==='approved')&&<p className="muted">No approved payments yet.</p>}
+              </section>
+              <section className="live-tv-card"><h2>Awaiting verification</h2>
+                {data.payments.filter(p=>p.status==='pending').slice(0,8).map(p=><div className="live-feed-row pending-feed" key={p.id}><b>Room {p.room_number}</b><span>{money(p.amount)}</span><small>Submitted {new Date(p.created_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</small></div>)}
+                {!data.payments.some(p=>p.status==='pending')&&<p className="muted">No pending approvals.</p>}
+              </section>
+              <section className="live-tv-card live-notices"><h2>Community notices</h2>
+                {data.notices.slice(0,5).map(n=><div className="live-notice-row" key={n.id}><b>{n.title}</b><p>{n.description}</p></div>)}
+                {!data.notices.length&&<p className="muted">No active notices.</p>}
+              </section>
+            </div>
+            <div className="live-tv-bottom"><span>LIVE · Auto refresh every 30 seconds</span><span>Last updated {liveLastUpdated.toLocaleTimeString('en-IN')}</span><button className="secondary" onClick={()=>load({silent:true})}>Refresh now</button></div>
           </section>
         )}
 
@@ -1378,7 +1495,7 @@ function DueList({ dues, onPay, pendingDueIds = new Set() }) {
     : <Empty text="No pending dues." />;
 }
 
-function PaymentList({ payments, admin, onDecision, onEditAmount }) {
+function PaymentList({ payments, admin, onDecision, onEditAmount, onDelete }) {
   return payments.length
     ? payments.map(p => (
       <div className="payment-row" key={p.id}>
@@ -1397,6 +1514,7 @@ function PaymentList({ payments, admin, onDecision, onEditAmount }) {
             <button className="approve" onClick={() => onDecision(p, 'approved')}>Approve</button>
             <button className="reject" onClick={() => onDecision(p, 'rejected')}>Reject</button>
           </>}
+          {onDelete && <button className="danger-outline" onClick={() => onDelete(p)}>Delete</button>}
         </div>}
       </div>
     ))
