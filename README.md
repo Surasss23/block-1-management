@@ -114,3 +114,11 @@ Migration `003_community_dashboard_and_payment_reference.sql` adds a payment ref
 
 ### Admin payment corrections and resident deletion
 Run `supabase/migrations/004_admin_payment_correction.sql` once to enable the protected admin action for correcting a recorded payment amount. The action changes the recorded amount but does not silently reverse an admin's approved/rejected decision. Deploy `supabase/functions/admin-delete-resident` from the Supabase Dashboard Edge Functions editor before using the Delete action in Residents. Deleting a resident permanently deletes that resident's payment history and dues before removing their Auth account; the room remains in the room registry and can be assigned to a new resident later. Confirm the room carefully before deletion.
+
+
+## Offline receipts and Block 1 Live Updates TV
+Run `supabase/migrations/005_offline_receipts_and_payment_cleanup.sql` once in the Supabase SQL Editor before using offline receipt entry or payment deletion. In Admin → Payment Approvals, choose an unpaid resident charge, enter the amount actually received, choose cash/bank transfer/UPI/cheque/other, and record it. The transaction is stored as approved and a downloadable A5 PDF receipt is generated. For partial receipts, the due remains outstanding until approved amounts cover the full charge.
+
+The Payment Approvals list also supports deleting a mistaken/test payment. Deletion is permanent and recalculates the linked due's paid/unpaid state from remaining approved payments. Verify the selected record before deleting.
+
+Admin navigation includes **Block 1 Live Updates**. It refreshes dashboard data every 30 seconds, updates the clock every second, and includes a Full screen button for a TV display. It shows aggregate room/payment counts, approved collection, pending count, recent approved payments, pending requests and published notices. Keep the TV logged in using an admin account and use a trusted display device; avoid showing this screen in public areas if payment identifiers or sensitive information are later added.
