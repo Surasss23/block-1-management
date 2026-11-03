@@ -23,6 +23,11 @@ const monthLabel = d => new Date(d).toLocaleString('en-IN', {
   year: 'numeric'
 });
 
+function withTimeout(promise, ms, message = 'The server is taking too long to respond. Please try again.') {
+  let timer;
+  return Promise.race([promise, new Promise((_, reject) => { timer = window.setTimeout(() => reject(new Error(message)), ms); })]).finally(() => window.clearTimeout(timer));
+}
+
 function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -270,17 +275,14 @@ function App() {
       return;
     }
 
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
+    let active = true;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+      if (active) setSession(currentSession);
     });
-
-    const {
-      data: { subscription }
-    } = supabase.auth.onAuthStateChange((_event, currentSession) => {
-      setSession(currentSession);
-    });
-
-    return () => subscription.unsubscribe();
+    withTimeout(supabase.auth.getSession(), 12000, 'Could not connect to the sign-in service. Check your internet connection and refresh.')
+      .then(({ data }) => { if (active) setSession(data.session); })
+      .catch((e) => { if (active) { setError(e.message || 'Unable to check your sign-in session.'); setLoading(false); } });
+    return () => { active = false; subscription.unsubscribe(); };
   }, []);
 
   useEffect(() => {
@@ -297,16 +299,13 @@ function App() {
     setError('');
 
     try {
-      const { data: p, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', session.user.id)
-        .single();
+      if (!session?.user?.id) throw new Error('Your sign-in session expired. Please sign in again.');
+      const { data: p, error: profileError } = await withTimeout(supabase.from('profiles').select('*').eq('id', session.user.id).single(), 15000);
 
       if (profileError) throw profileError;
       setProfile(p);
 
-      const [d, pa, n, e, c, s, ct] = await Promise.all([
+      const [d, pa, n, e, c, s, ct] = await withTimeout(Promise.all([
         supabase.from('dues').select('*')
           .order('created_at', { ascending: false }),
         supabase.from('payments').select('*')
@@ -323,7 +322,7 @@ function App() {
         supabase.from('settings').select('*'),
         supabase.from('contacts').select('*')
           .eq('active', true).order('sort_order')
-      ]);
+      ]), 20000);
 
       for (const result of [d, pa, n, e, c, s, ct]) {
         if (result.error) throw result.error;
