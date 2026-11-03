@@ -10,8 +10,6 @@ set search_path = public
 as $$
 declare
   payment_row public.payments%rowtype;
-  due_amount numeric(12,2);
-  approved_total numeric(12,2);
 begin
   if auth.uid() is null or not public.is_admin() then
     raise exception 'Admin access required' using errcode = '42501';
@@ -33,18 +31,8 @@ begin
   update public.payments
   set amount = corrected_amount
   where id = payment_id;
-
-  select amount into due_amount
-  from public.dues
-  where id = payment_row.due_id;
-
-  select coalesce(sum(amount), 0) into approved_total
-  from public.payments
-  where due_id = payment_row.due_id and status = 'approved';
-
-  update public.dues
-  set status = case when approved_total >= due_amount then 'paid' else 'unpaid' end
-  where id = payment_row.due_id;
+  -- Approval remains the admin's verification decision. Correcting the
+  -- recorded received amount does not silently reverse that decision.
 end;
 $$;
 
