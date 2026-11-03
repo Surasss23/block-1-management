@@ -267,7 +267,7 @@ function App() {
       setLiveLastUpdated(new Date());
     }, 30000);
     return () => { window.clearInterval(clockTimer); window.clearInterval(refreshTimer); };
-  }, [page, isAdmin, session]);
+  }, [page, profile?.role, session]);
 
   useEffect(() => {
     if (!supabase) {
