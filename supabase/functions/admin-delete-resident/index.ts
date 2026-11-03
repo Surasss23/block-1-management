@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
 
     const { room_number } = await req.json();
     const room = String(room_number ?? '').trim();
-    if (!/^\\d{3}$/.test(room)) throw new Error('Invalid room number');
+    if (!/^\d{3}$/.test(room)) throw new Error('Invalid room number');
 
     const { data: resident, error: residentError } = await admin
       .from('profiles').select('id,role,room_number').eq('room_number', room).maybeSingle();
